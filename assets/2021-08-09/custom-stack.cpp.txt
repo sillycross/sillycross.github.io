@@ -1,0 +1,115 @@
+#include <bits/stdc++.h>
+
+struct AutoTimer
+{
+	double *m_result;
+    struct timespec m_start;
+
+    static void gettime(struct timespec* dst)
+    {
+        int r = clock_gettime(CLOCK_MONOTONIC, dst);
+        assert(r == 0);
+        std::ignore = r;
+    }
+
+    static double tdiff(struct timespec* start, struct timespec* end) {
+      return static_cast<double>(end->tv_sec - start->tv_sec) +
+              double(1e-9) * static_cast<double>(end->tv_nsec - start->tv_nsec);
+    }
+
+    __attribute__((noinline)) AutoTimer() : m_result(nullptr) { gettime(&m_start); }
+    __attribute__((noinline)) AutoTimer(double *result) : m_result(result) { gettime(&m_start); }
+	__attribute__((noinline)) ~AutoTimer()
+	{
+        struct timespec m_end;
+        gettime(&m_end);
+        double timeElapsed = tdiff(&m_start, &m_end);
+		if (m_result != nullptr) *m_result = timeElapsed;
+		printf("AutoTimer: %.6lf second elapsed.\n", timeElapsed);
+	}
+};
+
+struct StackFrame
+{
+	void* ret;
+	int n;
+	uint64_t tmp;
+};
+
+StackFrame stack[10000];
+
+uint64_t __attribute__((noinline)) FibCustomStack(int initial_n)
+{
+	StackFrame* stacktop = stack;
+	uint64_t ret;
+	int n;
+	
+	// setup initial call frame, and execute initial call
+	//
+	stacktop->ret = &&end;
+	stacktop->n = initial_n;
+	goto entry;
+	
+end:
+	// executed after fib(initial_n) is computed
+	//
+	return ret;
+
+entry:
+	n = stacktop->n;
+	if (n <= 2)
+	{
+		ret = 1;
+		goto *stacktop->ret;
+	}
+	
+	stacktop++;
+	stacktop->ret = &&after_call1;
+	stacktop->n = n - 1;
+	goto entry;
+	
+after_call1:	
+	stacktop--;
+	stacktop->tmp = ret;
+	
+	n = stacktop->n;
+	stacktop++;
+	stacktop->ret = &&after_call2;
+	stacktop->n = n - 2;
+	goto entry;
+	
+after_call2:
+	stacktop--;
+	ret += stacktop->tmp;
+	goto *stacktop->ret;
+}
+
+uint64_t fib(int n)
+{
+	if (n <= 2) { return 1; } else { return fib(n-1) + fib(n-2); }
+}
+
+// compile: g++ fib_test2.cpp -O1 -fcf-protection=none -falign-functions=16 -falign-labels=16 
+// run: taskset -c 1 ./a.out
+//
+
+int main()
+{
+	uint64_t result;
+
+	{
+		AutoTimer t;
+		result = FibCustomStack(40);
+	}
+	printf("%llu\n", static_cast<unsigned long long>(result));
+	
+	{
+		AutoTimer t;
+		result = fib(40);
+	}
+	printf("%llu\n", static_cast<unsigned long long>(result));
+
+	return 0;
+}
+
+ 

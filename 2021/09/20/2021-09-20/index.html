@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="This is another note on JavaScriptCore (JSC)&#39;s DFG JIT. The topic today is on DFG’s IR design and a related optimizer pass called CPS Rethreading. As before, disclaimer first:  Disclaimer I do not wor">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass">
+<meta property="og:url" content="2021/09/20/2021-09-20/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="This is another note on JavaScriptCore (JSC)&#39;s DFG JIT. The topic today is on DFG’s IR design and a related optimizer pass called CPS Rethreading. As before, disclaimer first:  Disclaimer I do not wor">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-09-20T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-02-05T08:51:31.075Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2021-09-20" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2021-09-20T00:00:00.000Z" itemprop="datePublished">2021-09-20</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>This is another note on JavaScriptCore (JSC)'s DFG JIT. The topic today is on DFG’s IR design and a related optimizer pass called <em>CPS Rethreading</em>. As before, disclaimer first:</p>
+<blockquote>
+<p><strong>Disclaimer</strong><br>
+I do not work on JavaScriptCore, and my experience with Javascript is very limited. Everything described in this post is from my understanding of the JSC source code. They may be inaccurate or outright wrong. Please feel free to email me at haoranxu510 [at] gmail.com for any corrections and discussions.</p>
+</blockquote>
+<!-- In my opinion, the most interesting design choices of DFG's IR are centered around how it handles variables. I will start with a quick introduction of DFG's IR. -->
+<p>In DFG’s IR, each function consists of a list of <a href="https://en.wikipedia.org/wiki/Basic_block" target="_blank" rel="noopener">basic blocks</a>, and each basic block contains a list of IR intructions. An IR instruction is also implicitly the value this instruction produces, and can be used as operand to other IR instructions. Everything till now is similar to a typical <a href="https://en.wikipedia.org/wiki/Static_single_assignment_form" target="_blank" rel="noopener">SSA representation</a>. However, there are two important differences:</p>
+<ol>
+<li>Each IR instruction can only use the SSA values (implicitly produced by other IR instructions) in the <strong>same</strong> basic block.</li>
+<li>Unlike in SSA, DFG does <strong>not</strong> have an IR instruction named “Phi”. Instead, in DFG’s IR, each function has a list of “slots”, which are local variables that one can read from and write to. There are two IR instructions <code>GetLocal</code> and <code>SetLocal</code><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> which allows reading/writing a slot respectively.</li>
+</ol>
+<p>As one would expect, a <code>GetLocal</code> takes a slot number constant as operand, and produces an SSA value. A <code>SetLocal</code> takes an SSA value (i.e., an IR instruction that produces a value) and a slot number constant as operands, and produces nothing.</p>
+<p>The above representation (called <code>LoadStore</code> form in JSC) is very flexible for users to generate the IR, but not good for optimization, because in such representation it is hard to reason about the data stored in local variables. This is where the CPS Rethreading pass comes in, which transforms the graph to the so-called <code>ThreadedCPS</code> form. The CPS rethreading pass optimizes away redundant loads, adds <strong>auxiliary</strong> Phi nodes that describe the data flow of loads and stores, and also performs <a href="https://en.wikipedia.org/wiki/Live_variable_analysis" target="_blank" rel="noopener">liveness analysis</a>.</p>
+<p>The most interesting design choice here is that the Phi nodes are auxiliary and optional, and are <em>not</em> part of the IR graph: the correctness of the IR graph is not affected even if all Phi nodes were removed, and by doing so, it only puts the graph back to <code>LoadStore</code> form.</p>
+<p>As a result, a transformation pass may choose to either maintain the Phi nodes and the liveness information, or simply mark that the graph has been put back to <code>LoadStore</code> form (and then the CPS Rethreading pass can be called to bring it to <code>ThreadedCPS</code> form again).</p>
+<p>The extra information available in <code>ThreadedCPS</code> form is the following:</p>
+<ol>
+<li>Each basic block gets a list of auxiliary Phi nodes. Unlike Phi nodes in SSA form, the Phi node here is parametrized by a slot number constant, so it denotes the value of that local variable at the start of the basic block. Those Phi nodes are only referenced by other Phi nodes (from other basic blocks) and by the stuffs below. They are never used by a normal IR instruction as operand.</li>
+<li>Each basic block gets two auxiliary arrays <code>variablesAtHead</code> and <code>variablesAtTail</code> of length <code>N</code> (where <code>N</code> is the total number of local variable slots of the function). The <code>variablesAtHead</code> array denotes the value of all <a href="https://en.wikipedia.org/wiki/Live_variable_analysis" target="_blank" rel="noopener">live variables</a> at the start of the basic block. The <code>variablesAtTail</code> array denotes the value of all available (defined here as either live at the start of the basic block, or modified inside the basic block) variables at the end of the basic block.</li>
+<li>Each <code>GetLocal</code> node gets an auxiliary pointer which denotes the value this <code>GetLocal</code> would yield. The pointer points to either a value-producing instruction in the same basic block (which means the <code>GetLocal</code> would yield that value), or a Phi node in the same basic block (which means the <code>GetLocal</code> would yield the value of the Phi).</li>
+<li>Redundant <code>GetLocal</code>s to the same local variable in the same basic block are removed. There are two cases:<br>
+(a). A <code>GetLocal</code> after another <code>GetLocal</code> can be replaced by the previous <code>GetLocal</code>.<br>
+(b). A <code>GetLocal</code> after a <code>SetLocal</code> can be replaced by the operand of the <code>SetLocal</code>.</li>
+</ol>
+<p>There are a few points that are worth to note:</p>
+<ol>
+<li>Point (2) above implies that the total space consumption is <code>O(NM)</code> where <code>N</code> is the total number of local variable slots and <code>M</code> is the number of basic blocks.</li>
+<li>Redundant <code>SetLocal</code>s to the same local variable inside the same basic block are not removed. Probably it has something to do with OSR.</li>
+<li>The design above makes sure that all the extra information (most notably, the Phi nodes) are auxiliary: they can be safely dropped without affecting correctness.</li>
+</ol>
+<h4 id="The-Algorithm">The Algorithm</h4>
+<p>The algorithm is implemented in <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGCPSRethreadingPhase.cpp" target="_blank" rel="noopener">DFGCPSRethreadingPhase.cpp</a>. For simplicity, as before, we will focus on <code>GetLocal</code> and <code>SetLocal</code> only, and ignore <code>Flush</code>, <code>PhantomLocal</code>, <code>SetArgumentDefinitely</code> and <code>SetArgumentMaybe</code> related logic.</p>
+<p>The first step of the algorithm resets the existing state in case the pass has been invoked earlier. It clears the <code>variablesAtHead</code> and <code>variablesAtTail</code> array for each basic block, removes all Phi nodes, and reserves the space for the annotation pointer for each <code>GetLocal</code> node (by simply repurposes the unused <code>child1</code> field).</p>
+<p>In the second step, for each basic block, it iterates all the IR instructions from up to down. The <code>variablesAtTail</code> array is used as a scratchpad to keep track of the current value of each variable at the current IR instruction being iterated.</p>
+<ol>
+<li>If it is a <code>GetLocal</code> instruction, and <code>variablesAtTail[i]</code> is <code>nullptr</code>, then this is the first time the variable <code>i</code> is used in this basic block, and the value of this variable should come from a Phi node. So we create a Phi node and store it into <code>variablesAtHead[i]</code>. The <code>variablesAtTail[i]</code> should also be updated to the current <code>GetLocal</code> node<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>.</li>
+<li>If it is a <code>GetLocal</code> instruction, but <code>variablesAtTail[i]</code> is not <code>nullptr</code>, then the local variable <code>i</code> has been used in this basic block. Thus, this <code>GetLocal</code> can always be removed from the graph by replacing it with another node (with detail described earlier). Thanks to the design of the IR, this <code>GetLocal</code> may only be used by later IR instructions in the same basic block, so the replacement can be done easily<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</li>
+<li>If it is a <code>StoreLocal</code> instruction, then we can simply update the corresponding slot in <code>variablesAtTail</code>.</li>
+</ol>
+<p>The third step builds the incoming edges for all Phi nodes. The Phi nodes created in the previous step are put into a list<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>. The algorithm iterates until the list gets empty. Each time an element, let’s say, a Phi node for some variable <code>i</code> in basic block <code>B</code>, is removed from the list. Then for all predecessors <code>P</code> of basic block <code>B</code>:</p>
+<ol>
+<li>If <code>P.variablesAtTail[i]</code> is <code>nullptr</code>, then there isn’t a Phi node in <code>P</code> for local variable <code>i</code> yet. So, a new one is created, and <code>P.variablesAtHead[i]</code> and <code>P.variablesAtTail[i]</code> is updated. The newly created Phi node is put into the list.</li>
+<li>Otherwise, the predecessor of the current Phi node for that basic block should simply be <code>P.variablesAtTail[i]</code><sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>.</li>
+</ol>
+<p>Note that the second step and the third step also guarantee that <code>variablesAtHead</code> correctly contains the information for all live variables at the start of a basic block.</p>
+<h4 id="Conclusion">Conclusion</h4>
+<p>In my opinion, the design of the DFG IR is really neat. The standard SSA form is best suited for optimization, but it is both difficult and slow to construct and transform. The DFG IR made interesting design choices that intentionally deviates from the standard SSA form to improve compilation speed and usability. This matches DFG JIT’s design goal as a fast optimizer. The CPS Rethreading pass is a neat algorithm that serves multiple purposes simultaneously: to simplify and canonicalize the IR, to construct a SSA-like Phi data flow, and to perform liveness analysis.</p>
+<hr>
+<h5 id="Footnotes">Footnotes</h5>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>In fact, there are also <code>Flush</code> and <code>PhantomLocal</code> which are related to OSR, and <code>SetArgumentDefinitely</code> and <code>SetArgumentMaybe</code> which are related to special casing of arguments, but we will overlook them in this article for simplicity. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>It seems like the algorithm intentionally updates it to the <code>GetLocal</code> node instead of the Phi node because it can provide more information to users: one can easily trace to the Phi from the <code>GetLocal</code> but not otherwise around. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>Specifically, all we need to do is to maintain the replacement map, and at the time we iterate a node, we check if any of its operands are in the replacement map. If yes, we replace it. The replacement map can simply be a <code>std::map</code>, but a hash table lookup is still slow, so in JSC there is a 8-byte scratch field in each <code>Node</code> struct that can be used for this purpose (or other similar purposes). <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>In fact, there are three different kinds of local variables: <code>Argument</code>, <code>Local</code> and <code>Tmp</code>. So correspondingly, there are three different lists. I think it’s only an implementation detail: the three list could have been merged into one, but the current code design (where the <code>Kind</code> is used as a template parameter in several APIs) makes it easiest to just have three lists. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>The actual implementation is a bit more complex. If the predecessor node is a <code>GetLocal</code>, it would further forward it to the value of the <code>GetLocal</code> (as computed in the auxiliary pointer), but if the predecessor node is a <code>StoreLocal</code>, it won’t forward it to its operand. But these are only implementation details to best fit the needs of the clients (the other optimization passes), so we omit them to highlight the core idea. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2021/09/20/2021-09-20/" data-id="ckz9lkoxw00079qom5fp51irb" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../12/2021-09-12/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Static Analysis in JavaScriptCore (Part I)</span>
+    </a>
+  </li>
+  
+  
+  <li role="presentation">
+    <a href="../../../10/24/2021-10-24/" id="article-nav-newer" class="article-nav-link-wrap">
+      <span class="article-nav-link-title">Some Random Thoughts</span>
+      <i class="fa fa-chevron-right pull-right"></i>
+    </a>
+  </li>
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="../../../10/24/2021-10-24/">Some Random Thoughts</a>
+        </li>
+      
+        <li>
+          <a href="">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
+        </li>
+      
+        <li>
+          <a href="../../12/2021-09-12/">Static Analysis in JavaScriptCore (Part I)</a>
+        </li>
+      
+        <li>
+          <a href="../../03/2021-09-03/">Some Experiment Notes on Pitching and Storytelling</a>
+        </li>
+      
+        <li>
+          <a href="../../../08/23/2021-08-23/">A Trick for Reflection in C++</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

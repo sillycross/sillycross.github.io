@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right) | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="Today I got into a question loosely related to my research. Many language VMs choose to implement their own call stack, instead of piggybacking on the native C stack. Probably one advantage of such no">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right)">
+<meta property="og:url" content="2021/08/09/2021-08-09/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="Today I got into a question loosely related to my research. Many language VMs choose to implement their own call stack, instead of piggybacking on the native C stack. Probably one advantage of such no">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="/images/2021-08-09/heatmap.png">
+<meta property="article:published_time" content="2021-08-09T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-02-05T08:51:31.075Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/2021-08-09/heatmap.png">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2021-08-09" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right)
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2021-08-09T00:00:00.000Z" itemprop="datePublished">2021-08-09</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Today I got into a question loosely related to my research. Many language VMs choose to implement their own call stack, instead of piggybacking on the native C stack. Probably one advantage of such non-native stacks is that it makes implementing coroutines and stack walking easier.</p>
+<p>But this is not my question. Everyone knows in C function calls are implemented by the <code>call</code> instruction and the <code>ret</code> instruction. These machine instructions implicitly modifies the <code>SP</code> stack pointer register and then redirect the control flow. So if we were to use a non-native stack (that is not managed by the <code>SP</code> register), the straightforward way is to simulate the <code>call</code> and <code>ret</code> by <code>jmp</code>s. However, a <code>ret</code> is actually an <strong>indirect</strong> jump, since it jumps to non-literal address (the return address).</p>
+<p>It is well known that indirect jumps are slow, since the jump target is hard to speculate, and if a CPU fails to speculate, it fails to run fast. So my question is:</p>
+<blockquote>
+<p>How much slower is an (inpredictable) indirect jump compared with a <code>ret</code>?</p>
+</blockquote>
+<p>Unsurprisingly, modern CPUs extensively optimize <code>ret</code> given its pervasive use, through <a href="http://blog.stuffedcow.net/2018/04/ras-microbenchmarks/" target="_blank" rel="noopener">a specialized branch predictor called a Return Address Stack (RAS)</a>. That post also measured various hardware-specific limits of the RAS, and demonstrated the extraordinary performance punishment if a user program made the RAS unhappy. However, it did not measure how an impredictable indirect jump compares with a <code>ret</code>.</p>
+<p>So I decided to experiment with it myself. The idea came off my head is the recursive Fibonacci function. Since it has two recursive calls, a <code>ret</code> simulated by indirect <code>jmp</code> will have two possible targets. Importantly, the pattern of which target being taken is complex and it is unlikely that a CPU can predict it.</p>
+<p>So I wrote a simple recursive function using the C native stack, and a hand-rolled function using a custom stack. For the hand-rolled function, a recurse is implemented by a <code>goto</code>, and a return is implemented by a <code>computed goto</code>, using the GCC <a href="https://gcc.gnu.org/onlinedocs/gcc/Labels-as-Values.html" target="_blank" rel="noopener">computed goto</a> extension feature, with the key logic shown below (<a href="/assets/2021-08-09/custom-stack.cpp.txt">full benchmark code</a>).</p>
+<div class='spoiler collapsed'>
+    <div class='spoiler-title'>
+        code
+    </div>
+    <div class='spoiler-content'>
+        <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">StackFrame</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">  <span class="keyword">void</span>* ret;</span><br><span class="line">  <span class="keyword">int</span> n;</span><br><span class="line">  <span class="keyword">uint64_t</span> tmp;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// key logic</span></span><br><span class="line"><span class="comment">// stacktop is a StackFrame*</span></span><br><span class="line">entry:</span><br><span class="line">  n = stacktop-&gt;n;</span><br><span class="line">  <span class="keyword">if</span> (n &lt;= <span class="number">2</span>) &#123;</span><br><span class="line">    ret = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">goto</span> *stacktop-&gt;ret;</span><br><span class="line">  &#125;</span><br><span class="line">  </span><br><span class="line">  stacktop++;</span><br><span class="line">  stacktop-&gt;ret = &amp;&amp;after_call1;</span><br><span class="line">  stacktop-&gt;n = n - <span class="number">1</span>;</span><br><span class="line">  <span class="keyword">goto</span> entry;</span><br><span class="line">  </span><br><span class="line">after_call1:  </span><br><span class="line">  stacktop--;</span><br><span class="line">  stacktop-&gt;tmp = ret;</span><br><span class="line">  </span><br><span class="line">  n = stacktop-&gt;n;</span><br><span class="line">  stacktop++;</span><br><span class="line">  stacktop-&gt;ret = &amp;&amp;after_call2;</span><br><span class="line">  stacktop-&gt;n = n - <span class="number">2</span>;</span><br><span class="line">  <span class="keyword">goto</span> entry;</span><br><span class="line">  </span><br><span class="line">after_call2:</span><br><span class="line">  stacktop--;</span><br><span class="line">  ret += stacktop-&gt;tmp;</span><br><span class="line">  <span class="keyword">goto</span> *stacktop-&gt;ret;</span><br></pre></td></tr></table></figure>
+    </div>
+</div>
+<p>One tricky part is that GCC is smart enough to unroll the Fibonacci function into a single recursive call performed in a loop. We do not want this to happen, since the point of this microbenchmark is to have two call sites. Fortunately, by compiling with <code>-O1</code>, GCC won’t perform this unwanted optimization. I also confirmed that the assembly code generated by GCC correctly replicates the computation logic I wanted to test, as seen below.</p>
+<div class='spoiler collapsed'>
+    <div class='spoiler-title'>
+        code
+    </div>
+    <div class='spoiler-content'>
+        <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">00:    mov    %rdi,0x18(%rax)   # %rdi &#x3D; 0x30</span><br><span class="line">04:    sub    $0x1,%edx</span><br><span class="line">07:    mov    %edx,0x20(%rax)</span><br><span class="line">0a:    lea    0x18(%rax),%rax</span><br><span class="line">10:    mov    0x8(%rax),%edx    # func entry</span><br><span class="line">13:    cmp    $0x2,%edx</span><br><span class="line">16:    jg     00 </span><br><span class="line">18:    mov    (%rax),%rcx</span><br><span class="line">1b:    mov    %rsi,%rdx         # %rsi &#x3D; 0x1</span><br><span class="line">20:    jmpq   *%rcx</span><br><span class="line">30:    mov    %rdx,-0x8(%rax)</span><br><span class="line">34:    mov    %r8,(%rax)        # %r8 &#x3D; 0x50</span><br><span class="line">37:    mov    -0x10(%rax),%ecx</span><br><span class="line">3a:    lea    -0x2(%rcx),%edx</span><br><span class="line">3d:    mov    %edx,0x8(%rax)</span><br><span class="line">40:    jmp    10 </span><br><span class="line">50:    sub    $0x18,%rax</span><br><span class="line">54:    add    0x10(%rax),%rdx</span><br><span class="line">58:    mov    (%rax),%rcx</span><br><span class="line">5b:    jmp    20 </span><br></pre></td></tr></table></figure>
+    </div>
+</div>
+<p>I ran my microbenchmark code to compute <code>fib(40)=102334155</code>, and the result is as follow:</p>
+<blockquote>
+<p><strong>NOTE! THIS IS NOT VALID RESULT! Keep reading.</strong><br>
+Custom stack (computed goto) took 0.301 seconds.<br>
+Native stack took 0.266 seconds.</p>
+</blockquote>
+<p>So it seems like the non-native stack incurs about 10% overhead for Fibonacci: I know this is not a very accurate measurement, but I (naively) felt that it is good enough. So I decided to clean up my code a little bit for future record. Of course, the story is not that simple…</p>
+<p>So, I decided to add a <code>printf</code> in the <code>main</code> function to make the output more informational. Of course, the <code>printf</code> is outside the benchmark timing region. Specifically, all I did is adding the two <code>printf</code> lines, exactly as shown below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">&gt;&gt;&gt;&gt;&gt; line added &gt;&gt;&gt; <span class="built_in">printf</span>(<span class="string">"Benchmarking Fib custom stack..\n"</span>); </span><br><span class="line">  <span class="keyword">uint64_t</span> result;</span><br><span class="line">  &#123;</span><br><span class="line">    AutoTimer t;</span><br><span class="line">    result = FibCustomStack(<span class="number">40</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"%llu\n"</span>, <span class="keyword">static_cast</span>&lt;<span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">long</span>&gt;(result));</span><br><span class="line"></span><br><span class="line">&gt;&gt;&gt;&gt;&gt; line added &gt;&gt;&gt; <span class="built_in">printf</span>(<span class="string">"Benchmarking Fib native stack..\n"</span>); </span><br><span class="line">  &#123;</span><br><span class="line">    AutoTimer t;</span><br><span class="line">    result = fib(<span class="number">40</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"%llu\n"</span>, <span class="keyword">static_cast</span>&lt;<span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">long</span>&gt;(result));</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>I compiled and ran the code again, not expecting any changes in numbers. What astonished me is that my computed goto implementation went from <code>0.30s</code> straight up to <code>0.34s</code>!</p>
+<p>Something clearly went wrong. <strong>But what <em>could</em> go wrong by adding two lines of <code>printf</code>?</strong> And the <code>printf</code> is not even in the code being timed!</p>
+<p>I first tried to increase the input from <code>40</code> to <code>45</code> so the benchmark computation runs longer. It turns out that, without the additional <code>printf</code>, the computed goto implementation took <code>3.4s</code>. But with the <code>printf</code>, the time increased to <code>3.9s</code>. So the slowdown is not even a fixed slowdown, but scales with input! <strong>WHAT?!</strong></p>
+<p>Okay. So what if I delete one <code>printf</code>? I tried to delete the first <code>printf</code>, so the benchmark in question is executed first, and then the extra <code>printf</code> is executed. However, the <code>3.4s</code> vs <code>3.9s</code> slowdown is still there. How come this extra <code>printf</code> can slow down something that is executed <strong>before</strong> it?!</p>
+<p>I decided to dump out the full assembly and compare line to line.</p>
+<p>Surprisingly, and not surprisingly, the two versions are identical – except a few more lines of assembly at the expected spot that calls the extra <code>printf</code>. I am completely baffled.</p>
+<p>Fortunately, even though I’m not sure if deities exist, I am skeptical that there is a deity who is responsible for my CPU’s performance. I soon realized that the code layout must have been changed by the extra <code>printf</code>. So I printed the pointer address of my function <code>FibCustomStack</code>. Indeed, the pointer changed from <code>0x****190</code> to <code>0x****1a0</code> (the higher digits are inheriently random due to <a href="https://en.wikipedia.org/wiki/Address_space_layout_randomization" target="_blank" rel="noopener">ASLR</a>).</p>
+<p>Though I’m not a hardware feature expert, I still know that the CPU branch predictor works by hashing some bits in the address. The change in function address clearly also changes the address of all branch targets. Is this what caused the slowdown?</p>
+<p>Fortunately this hypothesis is easy to validate. The <code>FibCustomStack</code> function can be easily modified to not reference any global variables/functions, and thus made trivially relocatable. Then, we can relocate this function to different addresses, and check for any change in performance.</p>
+<p>I wrote <a href="/assets/2021-08-09/test-func-address.cpp.txt">a simple program</a> to test this hypothesis (Note: the program is architecture-specific. My CPU is <code>Intel Core i7-7700HQ CPU @ 2.80GHz</code>. The program may or may not run on another CPU). It <code>mmap</code>s a memory region as executable, and copies the binary code for the <code>FibCustomStack</code> function to different offsets in the region, and tests its performance. The program currently only test different offsets of the lowest 7 bits (128 combinations), but changing this behavior is easy.</p>
+<p>To plot the result, the execution time corresponding to the 128 offsets (<a href="/assets/2021-08-09/rawoutput.txt">raw data</a>) are plotted into a 8x16 matrix, with the 16 columns denote the value of the lower 4 bits of the offset, and the 8 rows denote the higher 3 bits. The matrix is then plotted as a heat map: a darker color means a slower execution time. The fastest of all 128 values is <code>3.33s</code> while the slowest is <code>4.54s</code>: almost 50% slower than the fastest.</p>
+<p><img src="/images/2021-08-09/heatmap.png" alt=""></p>
+<p>Somehow counter-intuitively, the function address that yields the fastest execution is not a multiple of 8 or 16. As a note, the function itself is compiled with <code>-falign-functions=16 -falign-labels=16</code>, so the offset between all branch targets and the function address is a multiple of 16. GCC treats it as an optimization to align functions and labels to power-of-2 byte boundaries, but this has been proven by the above heatmap to be not always beneficial. Therefore, the actual search space of code layouts is even larger: not only the higher bits of the function address (that is not tested by our simple program) may matter as well, but also internally, the function may arrange its branch targets at different (and not necessarily multiple-of-8 or 16) addresses to make the branch predictor’s hash function happy.</p>
+<p>Another counter-intuitive observation from the raw data is, certain function addresses (especially the slow ones) make the execution time much less stable than others, as shown in the <code>stddev</code> tab. I can think of no explanation why such macro-scale fluctuations can happen.</p>
+<p>I’m sure someone who knows more about hardware details than I do can explain better. If you have more ideas on what’s happening here, I’d really appreciate if you could send me an email (haoranxu510 [at] gmail.com)!</p>
+<h3 id="Conclusion">Conclusion</h3>
+<p>Although the experiment is still far from complete, the data collected as of now is already sufficient to disqualify the usefulness of the initial microbenchmark. While seemingly completely valid, it turns out that all we are testing is the performance at a random point inside a huge state space that is coincidentally thrown to us by the compiler.</p>
+<p>It’s worth mentioning that the problem is not fixed even if the said microbenchmark were implemented in assembly: even in assembly, you cannot easily specify the address of your function. And due to ASLR, the higher address bits of your function is always unknown. And if the CPU branch predictor hashes physical address instead of virtual address (I don’t know if it’s true or not), then you cannot control your function address even with ASLR disabled.</p>
+<p>Therefore, this demonstrates a case where even the expressiveness of C or assembly is not low-level enough to get sensible microbenchmark results. Furthermore, it is extremely easy to get misleaded: <strong>how counter-intuitive it is that the function address of your function can cause a up-to-50% performance impact</strong>!</p>
+<p>So, I witnessed again the complexity of modern CPUs, and the difficulty of the attempts to “capture” its behavior through microbenchmarks.</p>
+<p>P.S. During the experiment, I also hit a GCC miscompilation bug (<a href="assets/2021-08-09/gcc-bug.cpp.txt">repro</a>) caused by its computed-goto extension. The comment in my repro explains what happened. I’m not fully certain if my code is completely UB-free (I’m not language standard expert), but I guess I will still limit my trust in the GCC computed goto extension as a result.</p>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2021/08/09/2021-08-09/" data-id="ckz9lkoxr00029qom9i9n4bgx" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../07/2021-08-07/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Motivation for Yet Another Blog</span>
+    </a>
+  </li>
+  
+  
+  <li role="presentation">
+    <a href="../../23/2021-08-23/" id="article-nav-newer" class="article-nav-link-wrap">
+      <span class="article-nav-link-title">A Trick for Reflection in C++</span>
+      <i class="fa fa-chevron-right pull-right"></i>
+    </a>
+  </li>
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="../../../10/24/2021-10-24/">Some Random Thoughts</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/12/2021-09-12/">Static Analysis in JavaScriptCore (Part I)</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/03/2021-09-03/">Some Experiment Notes on Pitching and Storytelling</a>
+        </li>
+      
+        <li>
+          <a href="../../23/2021-08-23/">A Trick for Reflection in C++</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- Begin: Injected MathJax -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config("");
+</script>
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Queue(function() {
+    var all = MathJax.Hub.getAllJax(), i;
+    for(i=0; i < all.length; i += 1) {
+      all[i].SourceElement().parentNode.className += ' has-jax';
+    }
+  });
+</script>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML">
+</script>
+<!-- End: Injected MathJax -->
+<!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

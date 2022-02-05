@@ -1,0 +1,108 @@
+#include <bits/stdc++.h>
+#include <sys/mman.h>
+
+struct AutoTimer
+{
+	double *m_result;
+    struct timespec m_start;
+
+    static void gettime(struct timespec* dst)
+    {
+        int r = clock_gettime(CLOCK_MONOTONIC, dst);
+        assert(r == 0);
+        std::ignore = r;
+    }
+
+    static double tdiff(struct timespec* start, struct timespec* end) {
+      return static_cast<double>(end->tv_sec - start->tv_sec) +
+              double(1e-9) * static_cast<double>(end->tv_nsec - start->tv_nsec);
+    }
+
+    __attribute__((noinline)) AutoTimer() : m_result(nullptr) { gettime(&m_start); }
+    __attribute__((noinline)) AutoTimer(double *result) : m_result(result) { gettime(&m_start); }
+	__attribute__((noinline)) ~AutoTimer()
+	{
+        struct timespec m_end;
+        gettime(&m_end);
+        double timeElapsed = tdiff(&m_start, &m_end);
+		if (m_result != nullptr) *m_result = timeElapsed;
+		// printf("AutoTimer: %.6lf second elapsed.\n", timeElapsed);
+	}
+};
+
+constexpr size_t x_func_length = 160;
+constexpr uint8_t x_func_data[x_func_length] = { 
+	0x48,0x8d,0x5,0x29,0x0,0x0,0x0,0x48,0x89,0x6,0x89,0x7e,0x8,0x48,0x8d,0x3d,
+	0x5c,0x0,0x0,0x0,0xb9,0x1,0x0,0x0,0x0,0x4c,0x8d,0x5,0x70,0x0,0x0,0x0,
+	0xeb,0x2e,0x66,0x66,0x2e,0xf,0x1f,0x84,0x0,0x0,0x0,0x0,0x0,0xf,0x1f,0x0,
+	0xc3,0x66,0x66,0x2e,0xf,0x1f,0x84,0x0,0x0,0x0,0x0,0x0,0xf,0x1f,0x40,0x0,
+	0x48,0x89,0x7e,0x18,0x83,0xe8,0x1,0x89,0x46,0x20,0x48,0x8d,0x76,0x18,0x66,0x90,
+	0x8b,0x46,0x8,0x83,0xf8,0x2,0x7f,0xe8,0x48,0x8b,0x16,0x48,0x89,0xc8,0x66,0x90,
+	0xff,0xe2,0x66,0x66,0x2e,0xf,0x1f,0x84,0x0,0x0,0x0,0x0,0x0,0xf,0x1f,0x0,
+	0x48,0x89,0x46,0xf8,0x4c,0x89,0x6,0x8b,0x46,0xf0,0x83,0xe8,0x2,0x89,0x46,0x8,
+	0xeb,0xce,0x66,0x66,0x2e,0xf,0x1f,0x84,0x0,0x0,0x0,0x0,0x0,0xf,0x1f,0x0,
+	0x48,0x83,0xee,0x18,0x48,0x3,0x46,0x10,0x48,0x8b,0x16,0xeb,0xc3,0xf,0x1f,0x0 
+};
+
+struct StackFrame
+{
+	void* ret;
+	int n;
+	uint64_t tmp;
+};
+
+constexpr int x_stacksize = 10000;
+StackFrame stack[x_stacksize];
+
+constexpr size_t x_codeRegionSize = 8192;
+
+void test_offset(uintptr_t base, size_t offset)
+{
+	memset(reinterpret_cast<void*>(base), 0x90 /*nop*/, x_codeRegionSize);
+	memcpy(reinterpret_cast<void*>(base + offset), x_func_data, x_func_length);
+	
+	using FnProto = uint64_t(*)(int, StackFrame*);
+	FnProto entry = reinterpret_cast<FnProto>(base + offset);
+	
+	// run totalRuns + 1 times, discard first run
+	//
+	double totalTime = 0;
+	double squareTotalTime = 0;
+	int totalRuns = 10;
+	for (int iter = 0; iter <= totalRuns; iter++)
+	{
+		memset(stack, 0, sizeof(StackFrame) * x_stacksize);
+		double timeElapsed;
+		uint64_t result = 0;
+		{
+			AutoTimer t(&timeElapsed);
+			result = entry(45, stack);
+		}
+		assert(result == 1134903170);
+		if (iter == 0) 
+		{
+			// discard first run for any instruction cache invalidation issues
+			//
+			continue; 
+		}
+		totalTime += timeElapsed;
+		squareTotalTime += timeElapsed * timeElapsed;
+	}
+	double avg = totalTime / totalRuns;
+	double stddev = sqrt(squareTotalTime / totalRuns - avg * avg);
+	printf("Offset = %d : avg = %.6lf , stddev = %.6lf \n", int(offset), avg, stddev);
+	fflush(stdout);
+}
+	
+int main()
+{
+	void* p = mmap(nullptr, x_codeRegionSize, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+	assert(p != MAP_FAILED);
+	
+	for (size_t offset = 0; offset < 128; offset++)
+	{
+		test_offset(reinterpret_cast<uintptr_t>(p), offset);
+	}
+	return 0;
+}
+

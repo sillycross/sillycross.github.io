@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>A Trick for Reflection in C++ | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="Yesterday I got into the following problem. I want to allow certain C++ struct definitions in my code to be reflectively inspected. For example, if I defined a struct S with two int fields a and b, th">
+<meta property="og:type" content="article">
+<meta property="og:title" content="A Trick for Reflection in C++">
+<meta property="og:url" content="2021/08/23/2021-08-23/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="Yesterday I got into the following problem. I want to allow certain C++ struct definitions in my code to be reflectively inspected. For example, if I defined a struct S with two int fields a and b, th">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-08-23T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-02-05T08:51:31.075Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2021-08-23" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      A Trick for Reflection in C++
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2021-08-23T00:00:00.000Z" itemprop="datePublished">2021-08-23</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Yesterday I got into the following problem. I want to allow certain C++ struct definitions in my code to be reflectively inspected. For example, if I defined a struct <code>S</code> with two <code>int</code> fields <code>a</code> and <code>b</code>, the other parts of my program should be able to know that the struct <code>S</code> contains such two fields with such definitions and can act upon this information.</p>
+<p>Trivially, one can solve this problem by maintaining two pieces of code: the original definition and a map like <code>{ 'a': 'int', 'b': 'int'}</code>. But then the two pieces of code must be manually kept in sync, which is the point I want to avoid.</p>
+<p>Such use case is known as reflection. Unfortunately the C++ standard does not have native support for reflection. There are <a href="https://en.cppreference.com/w/cpp/experimental/reflect" target="_blank" rel="noopener">paper proposals</a> to support it, but none of the major compilers seem to have implemented them yet.</p>
+<p>The problem can also be solved via <a href="https://alexpolt.github.io/type-loophole.html" target="_blank" rel="noopener">a huge hack</a> called “the C++ Type Loophole”. However, it’s unclear why the hack could work, and it’s so hacky that even the C++ standard committee has reached <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#2118" target="_blank" rel="noopener">a decision that it should be prohibited</a>. So I’m not brave enough to use this hack.</p>
+<p>I eventually reached a less hacky (but of course, less powerful) solution. Since there is no native support for reflection, something has to be instrumented into the definitions of the structs. So in my solution, to make a struct reflective, one must use special macro <code>FIELD(type, name)</code> to define the fields: this allows us to automatically add some instrumentation into it. An example is shown below.</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">    BEGIN_FIELDS_LIST();</span><br><span class="line">    FIELD(<span class="keyword">int</span> a);</span><br><span class="line">    FIELD(<span class="keyword">double</span> b);</span><br><span class="line">    END_FIELDS_LIST();</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>My trick is based on the C <code>__COUNTER__</code> macro. <code>__COUNTER__</code> is a special macro that each time it is encountered, it is replaced by the current value of an internal counter maintained by the compiler, and then the internal counter is incremented. So each <code>__COUNTER__</code> macro is replaced by an unique integer that monotically increases through each occurrance in the program text.</p>
+<p>Note that the <code>__COUNTER__</code> macro is replaced on the spot. For example, <code>a ## __COUNTER__ = a ## __COUNTER__ + 1</code> will not increment the variable, since it’s going to be expanded to something like <code>a1 = a2 + 1</code>. So the common use pattern of <code>__COUNTER__</code> is to pass it to another macro as a parameter, as shown below:</p>
+ <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MY_MACRO_IMPL(a, b, counter) ... my impl ...</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MY_MACRO(a, b) MY_MACRO_IMPL(a, b, __COUNTER__)</span></span><br></pre></td></tr></table></figure>
+<p>This way, the <code>MY_MACRO_IMPL</code> macro can use its <code>counter</code> parameter as an unqiue integer.</p>
+<p>The core of the trick is to use this <code>__COUNTER__</code> macro to specialize templates. For a simple example, let’s assume we want to define structs that we can reflectively retrieve the number of fields in the struct. Then <code>BEGIN_FIELDS_LIST</code> can expands to the following code:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">int</span> o&gt; <span class="class"><span class="keyword">struct</span> __<span class="title">internal</span> :</span> __internal&lt;o - <span class="number">1</span>&gt; &#123; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="class"><span class="keyword">struct</span> __<span class="title">internal</span>&lt;counter&gt; &#123;</span></span><br><span class="line">  <span class="keyword">constexpr</span> <span class="keyword">static</span> <span class="keyword">size_t</span> N = <span class="number">0</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>And each <code>FIELD</code> macro will expand to the normal definition, as well as the following code:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="class"><span class="keyword">struct</span> __<span class="title">internal</span>&lt;counter&gt; &#123;</span></span><br><span class="line">  <span class="keyword">constexpr</span> <span class="keyword">static</span> <span class="keyword">size_t</span> N = __internal&lt;counter - <span class="number">1</span>&gt;::N + <span class="number">1</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>And the <code>END_FIELDS_LIST</code> macro will expand to the following code:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">constexpr</span> <span class="keyword">static</span> <span class="keyword">size_t</span> __numFields = __internal&lt;counter&gt;::N;</span><br></pre></td></tr></table></figure>
+<p>To summarize, the idea is the following.</p>
+<ol>
+<li>The <code>BEGIN_FIELDS_LIST</code> will define the general case of a template specialized by an integer <code>o</code>. The general definition will simply inherit whatever information is computed by template <code>o-1</code>. In addition to that, it also defines the recursion boundary condition (in our example, since we want to count the number of fields, <code>N = 0</code>).</li>
+<li>Each <code>FIELD</code> defintion specializes <code>__internal&lt;__COUNTER__&gt;</code>, and computes its information by merging the results in <code>counter-1</code> and itself (in our example, <code>N = __internal&lt;counter-1&gt;::N + 1</code>).</li>
+<li><code>END_FIELDS_LIST</code> can retrieve the aggregated results in <code>__internal&lt;__COUNTER__&gt;</code>.</li>
+</ol>
+<p>As one can see, the correctness of the above approach relies on only that each counter is replaced by a monotonically increasing integer. The starting integer value, or if any integer is skipped in the sequence, do not affect the correctness. And this matches exactly the semantics of the <code>__COUNTER__</code> macro in C. So are we good?</p>
+<p>One tricky problem arises from translation units. C/C++ compiler works on translation units (C/C++ files). So if a header file containing our definition is included by multiple source files, we may get different counter values in different translation units. In other words, the <code>__internal</code> struct is specialized differently in different translation units. This doesn’t affect our correctness. However, the important thing is that this violates C++'s one-definition rule.</p>
+<p>Fortunately, we are not doomed. C++ standard specifies that a constexpr symbol is only emitted if it is used by non-constexpr code. Since the <code>__internal</code> structs are only used to compute our final constexpr result <code>__numFields</code>, the compiler is guaranteed to not emit anything about the <code>__internal</code> structs. So no violations of the one-definition rule can be observed. And if we need to add non-constexpr functions to the <code>__internal</code> struct, we can also mark it as <code>always_inline</code> (which tells the compiler that the function must be inlined <em>for correctness</em>) to make sure nothing about the <code>__internal</code> structs are emitted.</p>
+<p>So to conclude, as long as we make sure that the <code>__internal</code> structs are not used elsewhere other than computing the final results (which can be achieved by, for example, making all its members private and all its non-constexpr functions <code>always_inline</code>), we should be fine with C++'s one-definition rule requirement.</p>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2021/08/23/2021-08-23/" data-id="ckz9lkoxt00049qomhyd76sha" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../09/2021-08-09/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right)</span>
+    </a>
+  </li>
+  
+  
+  <li role="presentation">
+    <a href="../../../09/03/2021-09-03/" id="article-nav-newer" class="article-nav-link-wrap">
+      <span class="article-nav-link-title">Some Experiment Notes on Pitching and Storytelling</span>
+      <i class="fa fa-chevron-right pull-right"></i>
+    </a>
+  </li>
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="../../../10/24/2021-10-24/">Some Random Thoughts</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/12/2021-09-12/">Static Analysis in JavaScriptCore (Part I)</a>
+        </li>
+      
+        <li>
+          <a href="../../../09/03/2021-09-03/">Some Experiment Notes on Pitching and Storytelling</a>
+        </li>
+      
+        <li>
+          <a href="">A Trick for Reflection in C++</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

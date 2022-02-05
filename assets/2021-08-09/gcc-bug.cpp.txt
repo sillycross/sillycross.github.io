@@ -1,0 +1,62 @@
+#include <bits/stdc++.h>
+
+uint64_t stack[10000];
+
+uint64_t FibCustomStack(int initial_n)
+{
+	uintptr_t stacktop = reinterpret_cast<uintptr_t>(stack);
+	uint64_t ret;
+	int n;
+	
+	*reinterpret_cast<void**>(stacktop) = &&end;
+	*reinterpret_cast<int*>(stacktop + 8) = initial_n;
+	goto entry;
+	
+end:
+	return ret;
+
+entry:
+	n = *reinterpret_cast<int*>(stacktop + 8);
+	if (n <= 2)
+	{
+		ret = 1;
+		goto *reinterpret_cast<void**>(stacktop);
+	}
+	
+	// This file demonstrates a GCC bug (for v9.3.0 at least)
+	//
+	// if you keep the things below, the executable crashes 
+	// despite the code below is not even executed (since initial_n == 2)
+	// (and you can confirm by disassembly that gcc generated faulty code)
+	// 
+	// however, if you remove everything below, 
+	// the executable runs successfully and prints out the correct output of 1
+	// This happens even if you compile with -O0 -fno-strict-aliasing 
+	// (so the potential strict-alias-related UB due to reinterpret_casts is not the reason)
+	//
+	stacktop += 24;
+	*reinterpret_cast<void**>(stacktop) = &&after_call1;
+	*reinterpret_cast<int*>(stacktop + 8) = n - 1;
+	goto entry;
+after_call1:	
+	stacktop -= 24;
+	*reinterpret_cast<uint64_t*>(stacktop + 16) = ret;
+	
+	stacktop += 24;
+	*reinterpret_cast<void**>(stacktop) = &&after_call2;
+	*reinterpret_cast<int*>(stacktop + 8) = n - 2;
+	goto entry;
+after_call2:
+	stacktop -= 24;
+	ret += *reinterpret_cast<uint64_t*>(stacktop + 16);
+	goto *reinterpret_cast<void**>(stacktop);
+}
+
+int main()
+{
+	uint64_t res = FibCustomStack(2);
+	printf("%llu\n", static_cast<unsigned long long>(res));
+	return 0;
+}
+
+
