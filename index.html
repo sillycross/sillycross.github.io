@@ -151,7 +151,7 @@
 <p>For example, for the type-casting example above, the below code would construct our desired two-dimensional dispatch array:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e1, e2) (void*)Cast<span class="meta-string">&lt;TUPLE_GET_2(e1), TUPLE_GET_2(e2)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_castOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_CARTESIAN_PRODUCT(X, (TYPE_LIST), (TYPE_LIST)) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
 <p>Note that the generated array is one-dimensional, but indexing it is pretty simple: <code>x_castOpPtr[opType1 * numTypes + opType2]</code> will give us the desired function pointer for <code>Src=opType1</code> and <code>Dst=opType2</code>.</p>
-<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="assets/2022-04-01/for-each-cartesian-product-macro.cpp.txt">can be found here</a>. The code is in public domain so feel free to use.</p>
+<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="https://sillycross.github.ioassets/2022-04-01/for-each-cartesian-product-macro.cpp.txt" target="_blank" rel="noopener">can be found here</a>. The code is in public domain so feel free to use.</p>
 <link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
       
     </div>
@@ -163,7 +163,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl1ge9qp40009aios0qfc1rx1" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl1geclos00099bomh1193mxd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -248,7 +248,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl1ge9qp30008aiosgkvw614l" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl1geclor00089bom1l7pc2ry" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -364,7 +364,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl1ge9qp20007aios2xaud4qr" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl1geclor00079bomd9q079f3" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -474,7 +474,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl1ge9qp10006aios53z2d7l2" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl1geclop00069bomfowm0gxd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -567,7 +567,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl1ge9qoz0005aiosgine21c0" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl1gecloo00059bom7vdidpkh" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -645,7 +645,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl1ge9qoy0004aioscvw83svy" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl1geclon00049bomdjqz14od" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -741,7 +741,7 @@ Native stack took 0.266 seconds.</p>
 <p>It’s worth mentioning that the problem is not fixed even if the said microbenchmark were implemented in assembly: even in assembly, you cannot easily specify the address of your function. And due to ASLR, the higher address bits of your function is always unknown. And if the CPU branch predictor hashes physical address instead of virtual address (I don’t know if it’s true or not), then you cannot control your function address even with ASLR disabled.</p>
 <p>Therefore, this demonstrates a case where even the expressiveness of C or assembly is not low-level enough to get sensible microbenchmark results. Furthermore, it is extremely easy to get misleaded: <strong>how counter-intuitive it is that the function address of your function can cause a up-to-50% performance impact</strong>!</p>
 <p>So, I witnessed again the complexity of modern CPUs, and the difficulty of the attempts to “capture” its behavior through microbenchmarks.</p>
-<p>P.S. During the experiment, I also hit a GCC miscompilation bug (<a href="/assets/2021-08-09/gcc-bug.cpp.txt">repro</a>) caused by its computed-goto extension. The comment in my repro explains what happened. I’m not fully certain if my code is completely UB-free (I’m not language standard expert), but I guess I will still limit my trust in the GCC computed goto extension as a result.</p>
+<p>P.S. During the experiment, I also hit a GCC miscompilation bug (<a href="https://sillycross.github.io/assets/2021-08-09/gcc-bug.cpp.txt" target="_blank" rel="noopener">repro</a>) caused by its computed-goto extension. The comment in my repro explains what happened. I’m not fully certain if my code is completely UB-free (I’m not language standard expert), but I guess I will still limit my trust in the GCC computed goto extension as a result.</p>
 <link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
       
     </div>
@@ -753,7 +753,7 @@ Native stack took 0.266 seconds.</p>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/09/2021-08-09/" data-id="cl1ge9qow0002aios8i5wgpw4" class="article-share-link">
+      <a data-url="2021/08/09/2021-08-09/" data-id="cl1geclok00029bomdcck08ij" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -824,7 +824,7 @@ It tells you something about the power of writing.<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/07/2021-08-07/" data-id="cl1ge9qor0000aiosb6ji4ec3" class="article-share-link">
+      <a data-url="2021/08/07/2021-08-07/" data-id="cl1geclog00009bomhda27lzv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->

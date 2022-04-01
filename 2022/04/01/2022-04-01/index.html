@@ -13,7 +13,7 @@
 <meta property="og:description" content="Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function based on the type of the input. Let’s say we want to implement an ad">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-04-01T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-04-01T12:20:46.716Z">
+<meta property="article:modified_time" content="2022-04-01T12:23:04.550Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -153,7 +153,7 @@
 <p>For example, for the type-casting example above, the below code would construct our desired two-dimensional dispatch array:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e1, e2) (void*)Cast<span class="meta-string">&lt;TUPLE_GET_2(e1), TUPLE_GET_2(e2)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_castOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_CARTESIAN_PRODUCT(X, (TYPE_LIST), (TYPE_LIST)) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
 <p>Note that the generated array is one-dimensional, but indexing it is pretty simple: <code>x_castOpPtr[opType1 * numTypes + opType2]</code> will give us the desired function pointer for <code>Src=opType1</code> and <code>Dst=opType2</code>.</p>
-<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="assets/2022-04-01/for-each-cartesian-product-macro.cpp.txt">can be found here</a>. The code is in public domain so feel free to use.</p>
+<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="https://sillycross.github.ioassets/2022-04-01/for-each-cartesian-product-macro.cpp.txt" target="_blank" rel="noopener">can be found here</a>. The code is in public domain so feel free to use.</p>
 <link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
       
     </div>
@@ -165,7 +165,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl1ge9qp40009aios0qfc1rx1" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl1geclos00099bomh1193mxd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
