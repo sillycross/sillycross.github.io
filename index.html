@@ -134,14 +134,14 @@
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOR_EACH_TYPE(X) \</span></span><br><span class="line">    X(Int32, <span class="keyword">int32_t</span>)    \</span><br><span class="line">    X(Int64, <span class="keyword">int64_t</span>)    \</span><br><span class="line">    X(Double, <span class="keyword">double_t</span>) ...</span><br></pre></td></tr></table></figure>
 <p>Then, by defining what <code>X(EnumType, CppType)</code> expands to, we can create logic based on our needs. For example, the following code would reproduce the <code>x_addOpPtr</code> array we want:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(EnumType, CppType) (void*)Add<span class="meta-string">&lt;CppType&gt; , </span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_TYPE(X) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X	<span class="comment">// hygiene </span></span></span><br></pre></td></tr></table></figure>
-<p>Note that the final <code>nullptr</code> is needed because our expansion <code>(void*)Negate&lt;CppType&gt;,</code> would generate an extra comma in the end.</p>
+<p>Note that the final <code>nullptr</code> is needed because our expansion <code>(void*)Add&lt;CppType&gt;,</code> would generate an extra comma in the end.</p>
 <h4 id="The-New-Challenge">The New Challenge</h4>
-<p>X Macro solved the above problem, but what if we want to handle, say, a type conversion?</p>
+<p>X Macro solved the above problem, but what if we want to handle, say, a type cast opcode?</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Src, <span class="keyword">typename</span> Dst&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Cast</span><span class="params">(Src* input, Dst* output)</span> </span>&#123;</span><br><span class="line">    *output = <span class="keyword">static_cast</span>&lt;Dst&gt;(*input);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>Now we have to generate a two-dimensional array, since we have two types <code>Src</code> and <code>Dst</code> to enumerate on. While X Macro can easily iterate through one list and perform action on every item, it cannot iterate through the <strong>Cartesian product of two lists</strong>. A worse solution, is of course, to manually define a list containing all the <code>&lt;Src, Dst&gt;</code> pairs, so we can do X macro again. But what if the array becomes three dimensional?</p>
+<p>Unlike the addition operator, now we have two types <code>Src</code> and <code>Dst</code> to enumerate on, so we have to generate a two-dimensional array. While X Macro can easily iterate through one list and perform action on every item, it cannot iterate through the <strong>Cartesian product of two lists</strong>. A worse solution, is of course, to manually define a list containing all the <code>&lt;Src, Dst&gt;</code> pairs, so we can do X macro again. But what if we want to do a three-dimensional Cartesian product in the future?</p>
 <p>After some fruitless Googling and home-making attempts to build a “two dimensional X Macro”, I eventually gave up and switched to <a href="https://github.com/sillycross/PochiVM/blob/master/pochivm/ast_type_helper.h#L635" target="_blank" rel="noopener">an ugly solution</a>. Instead of generating a clean static array, we generate a tree of templated dispatching functions. The function at the <code>i-th</code> level use a dispatch array (built by X macro) to dispatch to the next level’s selector function based on the <code>i-th</code> parameter type. We get the function pointer when we reach the leaf. While this approach works, no doubt it is very ugly, and probably also less performant (I didn’t check if the C++ compiler were able to optimize away all the terrible things).</p>
 <h4 id="The-FOR-EACH-Macro">The FOR_EACH Macro</h4>
-<p>I used to believe my ugly solution is the best solution one can get without resorting to manually enumerating the Cartesian product. However, today I learnt <a href="https://www.scs.stanford.edu/~dm/blog/va-opt.html" target="_blank" rel="noopener">an interesting approach</a> from David Mazieres, which he calls the <code>FOR_EACH</code> macro.</p>
+<p>I used to believe my ugly solution is as good as one can get without resorting to manually enumerating the Cartesian product. However, today I learnt <a href="https://www.scs.stanford.edu/~dm/blog/va-opt.html" target="_blank" rel="noopener">an interesting approach</a> from David Mazieres, which he calls the <code>FOR_EACH</code> macro.</p>
 <p>The semantics of the <code>FOR_EACH</code> macro is pretty clear. Taking a macro <code>X</code> (similar to the <code>X</code> in X Macro) and a comma-separated list of elements <code>e1, e2, ... , en</code>, the <code>FOR_EACH</code> macro invokes <code>X</code> on each <code>e</code> in the list. For example, the addition example would look like:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Note that the 'X' is gone, and the list is comma-separated</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> TYPE_LIST        \</span></span><br><span class="line">    (Int32, <span class="keyword">int32_t</span>) ,   \</span><br><span class="line">    (Int64, <span class="keyword">int64_t</span>) ,   \</span><br><span class="line">    (Double, <span class="keyword">double_t</span>) ...  </span><br><span class="line">    </span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e) (void*)Add<span class="meta-string">&lt;TUPLE_GET_2(e)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH(X, TYPE_LIST) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
 <p>The most important difference between <code>FOR_EACH</code> macro and X Macro is that the <code>FOR_EACH</code> list definition doesn’t take <code>X</code>. Unlike the X Macro, where the macro to call on each element is hardcoded to only pass the element itself, the <code>FOR_EACH</code> macro decoupled “the element to be processed” and “the macro processing the element”. This removes the biggest blocker to implement a macro that can enumerate through Cartesian product of multiple lists.</p>
@@ -151,7 +151,7 @@
 <p>For example, for the type-casting example above, the below code would construct our desired two-dimensional dispatch array:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e1, e2) (void*)Cast<span class="meta-string">&lt;TUPLE_GET_2(e1), TUPLE_GET_2(e2)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_castOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_CARTESIAN_PRODUCT(X, (TYPE_LIST), (TYPE_LIST)) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
 <p>Note that the generated array is one-dimensional, but indexing it is pretty simple: <code>x_castOpPtr[opType1 * numTypes + opType2]</code> will give us the desired function pointer for <code>Src=opType1</code> and <code>Dst=opType2</code>.</p>
-<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="https://sillycross.github.ioassets/2022-04-01/for-each-cartesian-product-macro.cpp.txt" target="_blank" rel="noopener">can be found here</a>. The code is in public domain so feel free to use.</p>
+<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="https://sillycross.github.io/assets/2022-04-01/for-each-cartesian-product-macro.cpp.txt" target="_blank" rel="noopener">can be found here</a>. The code is in public domain so feel free to use.</p>
 <link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
       
     </div>
@@ -163,7 +163,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl1gedove0009a3n8hdem38o7" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl1gwjyzw0009ajom0wodfkhx" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -248,7 +248,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl1gedovd0008a3n8ek3ffurk" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl1gwjyzv0008ajom8hv1e513" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -364,7 +364,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl1gedovc0007a3n8g3pz72ji" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl1gwjyzu0007ajom2m9j8jdj" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -474,7 +474,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl1gedovb0006a3n8htqoa60j" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl1gwjyzt0006ajoma00eaky6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -567,7 +567,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl1gedov90005a3n85v7bgolh" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl1gwjyzr0005ajom9aitboay" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -645,7 +645,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl1gedov80004a3n8aixf6l96" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl1gwjyzq0004ajom13st26zo" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -753,7 +753,7 @@ Native stack took 0.266 seconds.</p>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/09/2021-08-09/" data-id="cl1gedov60002a3n85t5ydexn" class="article-share-link">
+      <a data-url="2021/08/09/2021-08-09/" data-id="cl1gwjyzo0002ajomf28x7e0e" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -824,7 +824,7 @@ It tells you something about the power of writing.<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/07/2021-08-07/" data-id="cl1gedov10000a3n87gk730ti" class="article-share-link">
+      <a data-url="2021/08/07/2021-08-07/" data-id="cl1gwjyzj0000ajomfwgd6ifb" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
