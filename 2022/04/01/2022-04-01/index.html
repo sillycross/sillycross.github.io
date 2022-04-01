@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function based on the type of the input. Let’s say we want to implement an ad">
+<meta property="og:type" content="article">
+<meta property="og:title" content="From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro">
+<meta property="og:url" content="2022/04/01/2022-04-01/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function based on the type of the input. Let’s say we want to implement an ad">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2022-04-01T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-04-01T12:12:45.485Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2022-04-01" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-04-01T00:00:00.000Z" itemprop="datePublished">2022-04-01</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function based on the type of the input. Let’s say we want to implement an addition. We might end up with something like below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(T* input1, T* input2, T* output)</span> </span>&#123;</span><br><span class="line">    *output = *input1 + *input2;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>to implement the operation. At runtime, we want to dispatch to the right function base on the type of the operands. A natural way to do this is to have a static array holding the mapping from the operand type to the function pointer, similar to below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">enum</span> Type &#123; Int32, Int64, Double, ... &#125;;</span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123;</span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">int32_t</span>&gt;, </span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">int64_t</span>&gt;, </span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">double_t</span>&gt;, ...</span><br><span class="line">&#125;; </span><br></pre></td></tr></table></figure>
+<p>so at runtime we can just read <code>x_addOpPtr[operandType]</code> to obtain the function pointer we want to call.</p>
+<h4 id="The-X-Macro">The X Macro</h4>
+<p>Although the code above can work, it is clearly too error prone. If we accidentally made a mistake in the order of the list, we are screwed. A better way is the <a href="https://en.wikipedia.org/wiki/X_Macro" target="_blank" rel="noopener">X Macro</a> pattern. We define a “X macro” for all the types:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOR_EACH_TYPE(X) \</span></span><br><span class="line">    X(Int32, <span class="keyword">int32_t</span>)    \</span><br><span class="line">    X(Int64, <span class="keyword">int64_t</span>)    \</span><br><span class="line">    X(Double, <span class="keyword">double_t</span>) ...</span><br></pre></td></tr></table></figure>
+<p>Then, by defining what <code>X(EnumType, CppType)</code> expands to, we can create logic based on our needs. For example, the following code would reproduce the <code>x_addOpPtr</code> array we want:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(EnumType, CppType) (void*)Add<span class="meta-string">&lt;CppType&gt; , </span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_TYPE(X) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X	<span class="comment">// hygiene </span></span></span><br></pre></td></tr></table></figure>
+<p>Note that the final <code>nullptr</code> is needed because our expansion <code>(void*)Negate&lt;CppType&gt;,</code> would generate an extra comma in the end.</p>
+<h4 id="The-New-Challenge">The New Challenge</h4>
+<p>X Macro solved the above problem, but what if we want to handle, say, a type conversion?</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Src, <span class="keyword">typename</span> Dst&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Cast</span><span class="params">(Src* input, Dst* output)</span> </span>&#123;</span><br><span class="line">    *output = <span class="keyword">static_cast</span>&lt;Dst&gt;(*input);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Now we have to generate a two-dimensional array, since we have two types <code>Src</code> and <code>Dst</code> to enumerate on. While X Macro can easily iterate through one list and perform action on every item, it cannot iterate through the <strong>Cartesian product of two lists</strong>. A worse solution, is of course, to manually define a list containing all the <code>&lt;Src, Dst&gt;</code> pairs, so we can do X macro again. But what if the array becomes three dimensional?</p>
+<p>After some fruitless Googling and home-making attempts to build a “two dimensional X Macro”, I eventually gave up and switched to <a href="https://github.com/sillycross/PochiVM/blob/master/pochivm/ast_type_helper.h#L635" target="_blank" rel="noopener">an ugly solution</a>. Instead of generating a clean static array, we generate a tree of templated dispatching functions. The function at the <code>i-th</code> level use a dispatch array (built by X macro) to dispatch to the next level’s selector function based on the <code>i-th</code> parameter type. We get the function pointer when we reach the leaf. While this approach works, no doubt it is very ugly, and probably also less performant (I didn’t check if the C++ compiler were able to optimize away all the terrible things).</p>
+<h4 id="The-FOR-EACH-Macro">The FOR_EACH Macro</h4>
+<p>I used to believe my ugly solution is the best solution one can get without resorting to manually enumerating the Cartesian product. However, today I learnt <a href="https://www.scs.stanford.edu/~dm/blog/va-opt.html" target="_blank" rel="noopener">an interesting approach</a> from David Mazieres, which he calls the <code>FOR_EACH</code> macro.</p>
+<p>The semantics of the <code>FOR_EACH</code> macro is pretty clear. Taking a macro <code>X</code> (similar to the <code>X</code> in X Macro) and a comma-separated list of elements <code>e1, e2, ... , en</code>, the <code>FOR_EACH</code> macro invokes <code>X</code> on each <code>e</code> in the list. For example, the addition example would look like:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Note that the 'X' is gone, and the list is comma-separated</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> TYPE_LIST        \</span></span><br><span class="line">    (Int32, <span class="keyword">int32_t</span>) ,   \</span><br><span class="line">    (Int64, <span class="keyword">int64_t</span>) ,   \</span><br><span class="line">    (Double, <span class="keyword">double_t</span>) ...  </span><br><span class="line">    </span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e) (void*)Add<span class="meta-string">&lt;TUPLE_GET_2(e)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH(X, TYPE_LIST) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
+<p>The most important difference between <code>FOR_EACH</code> macro and X Macro is that the <code>FOR_EACH</code> list definition doesn’t take <code>X</code>. Unlike the X Macro, where the macro to call on each element is hardcoded to only pass the element itself, the <code>FOR_EACH</code> macro decoupled “the element to be processed” and “the macro processing the element”. This removes the biggest blocker to implement a macro that can enumerate through Cartesian product of multiple lists.</p>
+<p>The core of the trick which allows <code>FOR_EACH</code>’s list definition to get rid of the <code>X</code> lies in the <a href="https://en.cppreference.com/w/cpp/preprocessor/replace#Function-like_macros" target="_blank" rel="noopener">C++20 new feature</a> <code>__VA_OPT__</code>. David Mazieres’ original article is already a good explanation on how the <code>FOR_EACH</code> macro works so I won’t parrot it again. With the main blocker removed, after only a few hours of work, I was able to successfully extend <code>FOR_EACH</code> to support enumerating through the Cartesian product of multiple lists. (By the way, even after implementing it, I still have very little idea on how the C preprocessor works, but <code>clang++ -E</code> is enough to trial-and-error into a working solution).</p>
+<h4 id="The-FOR-EACH-CARTESIAN-PRODUCT-Macro">The FOR_EACH_CARTESIAN_PRODUCT Macro</h4>
+<p>I call my macro <code>FOR_EACH_CARTESIAN_PRODUCT</code>. As the name suggests, it takes a macro <code>X</code> and one or more lists <code>(L1), ..., (Ln)</code>. Then for each <code>(e1, ..., en)</code> in the Cartesian product <code>L1 x ... x Ln</code> , the macro <code>X(e1, ..., en)</code> is invoked. The elements in the Cartesian product are enumerated in lexical order.</p>
+<p>For example, for the type-casting example above, the below code would construct our desired two-dimensional dispatch array:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e1, e2) (void*)Cast<span class="meta-string">&lt;TUPLE_GET_2(e1), TUPLE_GET_2(e2)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_castOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_CARTESIAN_PRODUCT(X, (TYPE_LIST), (TYPE_LIST)) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
+<p>Note that the generated array is one-dimensional, but indexing it is pretty simple: <code>x_castOpPtr[opType1 * numTypes + opType2]</code> will give us the desired function pointer for <code>Src=opType1</code> and <code>Dst=opType2</code>.</p>
+<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="assets/2022-04-01/for-each-cartesian-product-macro.cpp.txt">can be found here</a>. The code is in public domain so feel free to use.</p>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl1ge0s7u0009cqn8fo7p3273" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../../../2021/10/24/2021-10-24/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Some Random Thoughts</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="">From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/10/24/2021-10-24/">Some Random Thoughts</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/09/12/2021-09-12/">Static Analysis in JavaScriptCore (Part I)</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/09/03/2021-09-03/">Some Experiment Notes on Pitching and Storytelling</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>
