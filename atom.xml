@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title></title>
+  <icon>icon.png</icon>
+  <subtitle>「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</subtitle>
+  <link href="atom.xml" rel="self"/>
+  
+  <link href="localhost:4000/"/>
+  <updated>2022-04-19T22:20:53.983Z</updated>
+  <id>localhost:4000/</id>
+  
+  <author>
+    <name>Haoran Xu</name>
+    
+  </author>
+  
+  <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro</title>
+    <link href="2022/04/01/2022-04-01/"/>
+    <id>2022/04/01/2022-04-01/</id>
+    <published>2022-04-01T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Some Random Thoughts</title>
+    <link href="2021/10/24/2021-10-24/"/>
+    <id>2021/10/24/2021-10-24/</id>
+    <published>2021-10-24T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;Recently I attended the &lt;a href=&quot;https://2021.splashcon.org/track/splash-2021-oopsla#event-overview&quot; target=&quot;_blank&quot;</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</title>
+    <link href="2021/09/20/2021-09-20/"/>
+    <id>2021/09/20/2021-09-20/</id>
+    <published>2021-09-20T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;This is another note on JavaScriptCore (JSC)&#39;s DFG JIT. The topic today is on DFG’s IR design and a related optimizer pass called</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Static Analysis in JavaScriptCore (Part I)</title>
+    <link href="2021/09/12/2021-09-12/"/>
+    <id>2021/09/12/2021-09-12/</id>
+    <published>2021-09-12T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;Recently I’ve been spending time to understand some internals of JavaScriptCore (JSC), the Javascript JIT compiler powering the Safari</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Some Experiment Notes on Pitching and Storytelling</title>
+    <link href="2021/09/03/2021-09-03/"/>
+    <id>2021/09/03/2021-09-03/</id>
+    <published>2021-09-03T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;A while ago I had been co-lecturing a small group of OI students with Richard. I was impressed how he could just take over any talk on</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>A Trick for Reflection in C++</title>
+    <link href="2021/08/23/2021-08-23/"/>
+    <id>2021/08/23/2021-08-23/</id>
+    <published>2021-08-23T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;Yesterday I got into the following problem. I want to allow certain C++ struct definitions in my code to be reflectively inspected. For</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right)</title>
+    <link href="2021/08/09/2021-08-09/"/>
+    <id>2021/08/09/2021-08-09/</id>
+    <published>2021-08-09T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;Today I got into a question loosely related to my research. Many language VMs choose to implement their own call stack, instead of</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Motivation for Yet Another Blog</title>
+    <link href="2021/08/07/2021-08-07/"/>
+    <id>2021/08/07/2021-08-07/</id>
+    <published>2021-08-07T00:00:00.000Z</published>
+    <updated>2022-04-19T22:20:53.983Z</updated>
+    
+    
+      
+      
+        
+        
+    <summary type="html">&lt;p&gt;I used to maintain a blog while I was in high school, like many others who have participated in &lt;a</summary>
+        
+      
+    
+    
+    
+    
+  </entry>
+  
+</feed>
