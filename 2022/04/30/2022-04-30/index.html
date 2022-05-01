@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>The Watchpoint Mechanism in JSC | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="While Javascript has a simple syntax, what happens behind the scene is far from simple. For example, consider this innocent-looking hypot function below: 123var hypot &#x3D; function(a, b) &amp;#123;    return">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Watchpoint Mechanism in JSC">
+<meta property="og:url" content="2022/04/30/2022-04-30/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="While Javascript has a simple syntax, what happens behind the scene is far from simple. For example, consider this innocent-looking hypot function below: 123var hypot &#x3D; function(a, b) &amp;#123;    return">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2022-04-30T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-05-01T08:32:47.913Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2022-04-30" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      The Watchpoint Mechanism in JSC
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-04-30T00:00:00.000Z" itemprop="datePublished">2022-04-30</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>While Javascript has a simple syntax, what happens behind the scene is far from simple. For example, consider this innocent-looking <code>hypot</code> function below:</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> hypot = <span class="function"><span class="keyword">function</span>(<span class="params">a, b</span>) </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">Math</span>.sqrt(a * a + b * b);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>It is clear what <code>Math.sqrt</code> does: it performs a square root. However, to actually execute <code>Math.sqrt(...)</code>, a lot of steps are needed:</p>
+<ol>
+<li>First, get the global object, where all global variables reside in.</li>
+<li>Then, get the <code>Math</code> property of the global object. Normally the <code>Math</code> property exists (since it is predefined), but we can’t know for sure: if someone had indeed run <code>delete Math;</code> before, we must promptly throw out an error.</li>
+<li>Next, get the <code>sqrt</code> property of <code>Math</code>. Note that we cannot even be certain that <code>Math</code> is an object (as someone could have done <code>Math = 123;</code>). So as in (2), we must not omit any check for error.</li>
+<li>Finally, similarly, what the <code>sqrt</code> property contains can be anything. Even if it is a function, it could be <em>any</em> function. So as before, we must not omit any check, and if <code>sqrt</code> is indeed a Javascript function, we perform the Javascript function call.</li>
+</ol>
+<p>So, in order to correctly (as every Javascript engine needs to be) execute this innocently looking <code>Math.sqrt</code>, a ton of stuffs must be done.</p>
+<h4 id="How-can-we-make-this-faster">How can we make this faster?</h4>
+<p>The crucial observation is that while the programmer is technically allowed to do anything, including insane things like <code>delete Math;</code> or <code>Math = 123</code>, most sane programs will not do it. So for practical purposes, it is enough if we can make sane programs both correct and fast, while running insane programs only correctly.</p>
+<p>In JSC (<a href="https://webkit.org/" target="_blank" rel="noopener">WebKit</a>’s Javascript engine), this is achieved by <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/Watchpoint.h.html#138" target="_blank" rel="noopener">Watchpoint</a>.</p>
+<p>Conceptually, a <code>WatchpointSet</code> represents a condition that one expects to be true, or simply put, a <em>watchable condition</em>. For example, we may expect the global object to contain property <code>Math</code>, and its value being equal to the predefined <code>Math</code> object.</p>
+<p>One may attach <code>Watchpoint</code>s to the <code>WatchpointSet</code>. A <code>Watchpoint</code> is essentially a callback: after attaching to a <code>WatchpointSet</code>, when the condition represented by the <code>WatchpointSet</code> becomes false, the callback is invoked (“fired”), so the owner who created the <code>Watchpoint</code> can react correspondingly.</p>
+<p>While the watchpoint mechanism isn’t necessarily binded to JIT Compilation (for example, <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/LLIntPrototypeLoadAdaptiveStructureWatchpoint.h.html#JSC::LLIntPrototypeLoadAdaptiveStructureWatchpoint" target="_blank" rel="noopener">LLIntPrototypeLoadAdaptiveStructureWatchpoint</a> works without JIT), it is most powerful when combined with JIT Compilation. We generate code that is optimized assuming the watchpoint condition holds, so inside the generated code, we don’t check for the condition at all. If the condition no longer holds, we must jettison the code – this is expensive, because all the work we did to generate the code is wasted, but the whole point of watchpoint is that such bad cases should happen only rarely.</p>
+<h4 id="A-Motivating-Example">A Motivating Example</h4>
+<p>Let’s go back to the <code>Math.sqrt</code> example: we want to get notified when a property of an object changes value. Therefore, all logic that writes value into object properties must cooperate with us. For simplicity, let’s assume the object <code>Math</code> has a <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">Structure</a>, say <code>S</code>. Then, there are two kinds of logic that may write to object properties:</p>
+<ol>
+<li>The C++ code that implements object property writes (the slow paths).</li>
+<li>The JIT’ed code that writes to a specific property of a specific structure (the fast paths).</li>
+</ol>
+<p>The slow path case is easy to handle: whenever one writes to a property of an object, one checks whether there are Watchpoints watching the condition, and fire them. Of course, we are doing one extra check for every object property write. However, those code are already slow paths, so it doesn’t hurt too much to make them a bit more slower.</p>
+<p>The fast path case is trickier. A naive solution is to add a watchpoint check, as how we handled slow-path. However, this is unsatisfactory: now, every fast-path write is doing one extra check! We can afford slowing down the slow-path, but we want to keep the fast-path fast.</p>
+<p>So to keep the fast-path fast, the fast-path must not check for watchpoint conditions it violates at runtime. Now, there is only one solution: we <em>permenantly</em> invalidate the <code>WatchpointSet</code> as soon as the fast-path code is JIT’ed, no matter if there are watchers or not. As another consequence, recall that an object-property-write fast path works on a fixed property (e.g. <code>sqrt</code>) of a fixed Structure (e.g. <code>S</code>), but not on fixed objects. So our watchpoints have to be in the form of <code>&lt;Structure, property&gt;</code>: they work on Structure-level but not object-level (they are called <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/StructureRareData.h.html#JSC::StructureRareData::m_replacementWatchpointSets" target="_blank" rel="noopener">ValueReplacementWatchpointSet</a> in JSC). For example,when a fast-path writing the <code>sqrt</code> property of Structure <code>S</code> is built, we have to be conservative and permanently invalidate WatchpointSet <code>&lt;S, sqrt&gt;</code>, since we have no way to know if that fast-path is going to run on our <code>Math</code> object in the future.</p>
+<h4 id="The-Design">The Design</h4>
+<p>This leads to the following design in JSC. A <code>WatchpointSet</code> has three possible <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/Watchpoint.h.html#JSC::WatchpointState" target="_blank" rel="noopener">states</a><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>:</p>
+<ol>
+<li><code>DoesNotExist</code>: The <code>WatchpointSet</code> object does not physically exist (and is implicitly <code>Valid</code>). This is needed because there is an infinite number of watchable conditions, and also that we want to save memory. In this state, there exists no fast-path that rely on or violate the watchpoint. Slowpath executions that violate the watchpoint are not recorded (but doing so wouldn’t break the scheme).</li>
+<li><code>Valid</code><sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>: The watchpoint is valid: no fast-path that may violate the watched condition has been built, and one may build fast-path relying on the watchpoint condition as long as it adds itself into the watcher list.</li>
+<li><code>Invalidated</code>: The watchpoint is permaently invalidated.</li>
+</ol>
+<p>As one can see from the example in the previous section, the <code>Watchpoint</code> system needs to handle interactions with three components:</p>
+<ol>
+<li>Slow-path (C++ code) that may violate the watched condition.</li>
+<li>Fast-path (JIT’ed code) that may violate the watched condition.</li>
+<li>Code (C++ or JIT’ed) that is optimized assuming the watched condition is true.</li>
+</ol>
+<p>For (1), the slow-path must check in the code any watchable condition it violated, and if the corresponding <code>WatchpointSet</code> exists, fire all watchers. However, in such case, the slow-path have the choice between invalidate the <code>WatchpointSet</code>, or to keep it valid<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</p>
+<p>For (2), the fast-path does not check the <code>WatchpointSet</code> condition it violates, but we must transition any <code>WatchpointSet</code> it may violate at runtime to <code>Invalidated</code> when such a fast-path is JIT’ed (and we must create such <code>WatchpointSet</code> object if it does not exist yet).</p>
+<p>For (3), we must disable the code when the watcher callback is invoked. If the code is C++ code, then disabling the codepath is as easy as flipping a flag. If the code is JIT’ed code, we must jettison the code<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>.</p>
+<h4 id="Back-to-Our-Example-and-Adaptive-Watchpoints">Back to Our Example, and Adaptive Watchpoints</h4>
+<p>Unfortunately, in our example, it turns out that only watching on <code>&lt;Structure, Property&gt;</code> is not enough. While this handles writes to <em>existing</em> properties correctly, one may create <em>new</em> properties in the object, thus transitioning its <code>Structure</code>. Say, one did a <code>Math.abc = 123;</code>. Since it adds a property to <code>Math</code>, the object <code>Math</code> gets a different structure <code>S2</code>, but our watchpoint is watching on <code>&lt;S, sqrt&gt;</code>, and we are screwed. To fix this issue, we must get notified when our object changes structure as well. However, as before, since an object-property-write fast-path works on a fixed <code>Structure</code> but not a fixed object, we have to put our watchpoint at <code>Structure</code> level. That is, we will have a <code>WachpointSet</code> on each Structure <code>S</code>, asserting that it never makes further transitions to other Structures (this is called a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/Structure.h.html#JSC::Structure::m_transitionWatchpointSet" target="_blank" rel="noopener">StructureTransitionWatchpointSet</a> in JSC).</p>
+<p>The last interesting piece is what to do when a StructureTransitionWatchpointSet turns to <code>Invalidated</code> state. If the transition happened on another object with the same Structure <code>S</code>, even though our <code>Math</code> object is not modified, we have no choice but to invalidate our code, as the StructureTransitionWatchpointSet for <code>S</code> has been invalidated, so we have no way to get notified if our <code>Math</code> object gets transitioned in the future.</p>
+<p>However, if the transition happened on object <code>Math</code> (i.e. <code>Math</code> itself gets a new Structure), then it’s possible to keep our optimized code valid: we just need to start watching <code>&lt;S2, sqrt&gt;</code> instead. So we will move our ValueReplacementWatchpoint to watch <code>&lt;S2, sqrt&gt;</code> and our StructureTransitionWatchpoint to watch <code>S2</code>, and keep our code valid<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. In JSC, such watchpoints whose action on fire is to move themselves to new places have a terminology <code>AdaptiveWatchpoints</code>.</p>
+<h4 id="Ending-Thoughts">Ending Thoughts</h4>
+<p>This way, by watching that the <code>Math</code> property of the global object never changes value, and that the <code>sqrt</code> property of the <code>Math</code> object never changes value, the code <code>Math.sqrt</code> is reduced from two object property lookups with a ton of error checks to a constant (not even a branch!) in the JIT’ed code.</p>
+<p>Furthermore, since this constant will be the intrinsic function implementing <code>sqrt</code> (as long as the user did not modify the value of <code>Math.sqrt</code>), the compiler will be sure that the call target is always the <code>sqrt</code> intrinsic function, so it can directly inline the implementation of <code>sqrt</code> into the code. Now, for sane programs that does not mess up with the predefined objects, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
+<p>Finally, a couple of side notes:</p>
+<ol>
+<li>If we want to avoid the case that the transition of another object results in invalidation of our code, we can give our object its own unique Structure, though the downside is that we might blow up the inline cache if we do it for too many objects.</li>
+<li>The slow-path does not fire the watchpoint if the watchpoint is in <code>DoesNotExist</code> or <code>Clear</code> state. This not only saves memory, but is also an advantage for the use case above: while it’s plausible to assume that sane programs will not change <code>Math.sqrt</code> frequently, it’s also plausible for them to change it at program start (e.g., to log a warning if the input to <code>sqrt</code> is negative). Since such code will execute in slow-path and before any fast-path relying on the <code>WatchpointSet</code> is built, they will not invalidate the <code>WatchpointSet</code>, as desired.</li>
+</ol>
+<h4 id="Acknowledgements">Acknowledgements</h4>
+<p>I thank Saam Barati from JSC team for teaching me all of these (and more) using his precious spare time. Of course, any mistakes in this post are mine.</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>Note that the <code>DoesNotExist</code> state is not listed in the enum, since in this state the object doesn’t exist at all. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>In fact, JSC further distinguishes <code>Valid</code> state into <code>Clear</code> and <code>Watched</code>, to determine the behavior when a slow-path violation happened (see Footnote 3). However, this is only a design detail, so we put it in footnote for ease of understanding. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>When the <code>WatchpointSet</code> is in <code>Clear</code> state, the slow-path will keep it in <code>Clear</code> state. However, if it is in <code>Watched</code> state, even if there are no watchers, it will be transitioned to <code>Invalidated</code> state. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>Things get trickier if the code is already running (e.g., the code being jettisoned is the current function being executed, a function in the call stack, or even a function inlined by the current function), in which case we must OSR Exit to the baseline tier, but we will ignore such complexities in this post. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>Of course, if the ValueReplacementWatchpointSet of <code>&lt;S2, sqrt&gt;</code> or the StructureTransitionWatchpointSet of <code>S2</code> is already <code>Invalidated</code>, we will still have to invalidate our code. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl2n1canw000bb5nf0p0deche" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../26/2022-04-26/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Note on x86-64 Memory Model</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">3</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="">The Watchpoint Mechanism in JSC</a>
+        </li>
+      
+        <li>
+          <a href="../../26/2022-04-26/">Note on x86-64 Memory Model</a>
+        </li>
+      
+        <li>
+          <a href="../../01/2022-04-01/">From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/10/24/2021-10-24/">Some Random Thoughts</a>
+        </li>
+      
+        <li>
+          <a href="../../../../2021/09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>
