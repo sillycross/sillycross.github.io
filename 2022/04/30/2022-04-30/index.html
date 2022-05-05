@@ -13,7 +13,7 @@
 <meta property="og:description" content="While Javascript has a simple syntax, what happens behind the scene is far from simple. For example, consider this innocent-looking hypot function below: 123var hypot &#x3D; function(a, b) &amp;#123;    return">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-04-30T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-05-05T04:10:50.848Z">
+<meta property="article:modified_time" content="2022-05-05T23:21:57.358Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -174,14 +174,14 @@
 <p>However, if the transition happened on object <code>Math</code> (i.e. <code>Math</code> itself gets a new Structure), then it’s possible to keep our optimized code valid: we just need to start watching <code>&lt;S2, sqrt&gt;</code> instead. So we will move our ValueReplacementWatchpoint to watch <code>&lt;S2, sqrt&gt;</code> and our StructureTransitionWatchpoint to watch <code>S2</code>, and keep our code valid<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. In JSC, such watchpoints whose action on fire is to move themselves to new places have a terminology <code>AdaptiveWatchpoints</code>.</p>
 <h4 id="Ending-Thoughts">Ending Thoughts</h4>
 <p>This way, by watching that the <code>Math</code> property of the global object never changes value, and that the <code>sqrt</code> property of the <code>Math</code> object never changes value, the code <code>Math.sqrt</code> is reduced from two object property lookups with a ton of error checks to a constant (not even a branch!) in the JIT’ed code.</p>
-<p>The watchpoint mechanism also helps other optimizations to generate better code. For example, the call opcode (which calls whatever is stored in <code>Math.sqrt</code>) has a so-called <code>ValueProfile</code> that records which functions it has called. For sane programs that does not mess up with the predefined objects, the value recorded will always be the <code>sqrt</code> intrinsic function. Normally this would allow the compiler to emit a check (that the result of expression <code>Math.sqrt</code> equals the <code>sqrt</code> intrinsic function) and speculatively inline <code>sqrt</code>. However, since the watchpoint already tells us that <code>Math.sqrt</code> <em>must</em> evaluates to the <code>sqrt</code> intrinsic function, the compiler can do better: it may omit the check and inline <code>sqrt</code> directly. Now, for sane programs, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
+<p>The watchpoint mechanism also helps other optimizations to generate better code. For example, the call opcode (which calls whatever is stored in <code>Math.sqrt</code>) has its own inline caching that records which functions it has called. For sane programs that does not mess up with the predefined objects, there will be only one callee recorded: the <code>sqrt</code> intrinsic function. Normally this would allow the compiler to emit a check (that the result of expression <code>Math.sqrt</code> equals the <code>sqrt</code> intrinsic function) and speculatively inline <code>sqrt</code>. However, since the watchpoint already tells us that <code>Math.sqrt</code> <em>must</em> evaluates to the <code>sqrt</code> intrinsic function, the compiler can do better: it may omit the check and inline <code>sqrt</code> directly. Now, for sane programs, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
 <p>Finally, a couple of side notes:</p>
 <ol>
 <li>If we want to avoid the case that the transition of another object results in invalidation of our code, we can give our object its own unique Structure, though the downside is that we might blow up the inline cache if we do it for too many objects.</li>
 <li>The slow-path does not fire the watchpoint if the watchpoint is in <code>DoesNotExist</code> or <code>Clear</code> state. This not only saves memory, but is also an advantage for the use case above: while it’s plausible to assume that sane programs will not change <code>Math.sqrt</code> frequently, it’s also plausible for them to change it at program start (e.g., to log a warning if the input to <code>sqrt</code> is negative). Since such code will execute in slow-path and before any fast-path relying on the <code>WatchpointSet</code> is built, they will not invalidate the <code>WatchpointSet</code>, as desired.</li>
 </ol>
 <h4 id="Acknowledgements">Acknowledgements</h4>
-<p>I thank Saam Barati from JSC team for teaching me all of these (and more) using his precious spare time. Of course, any mistakes in this post are mine.</p>
+<p>I thank Saam Barati from JSC team for teaching me all of these (and more) using his precious spare time, and for his valuable comments on this post. Of course, any mistakes in this post are mine.</p>
 <hr>
 <h4 id="Footnotes">Footnotes</h4>
 <hr class="footnotes-sep">
@@ -210,7 +210,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl2shqk5a000b9nm4bq3g0bpq" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl2tmuwby000bb7ok6nwici15" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->

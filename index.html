@@ -172,14 +172,14 @@
 <p>However, if the transition happened on object <code>Math</code> (i.e. <code>Math</code> itself gets a new Structure), then it’s possible to keep our optimized code valid: we just need to start watching <code>&lt;S2, sqrt&gt;</code> instead. So we will move our ValueReplacementWatchpoint to watch <code>&lt;S2, sqrt&gt;</code> and our StructureTransitionWatchpoint to watch <code>S2</code>, and keep our code valid<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. In JSC, such watchpoints whose action on fire is to move themselves to new places have a terminology <code>AdaptiveWatchpoints</code>.</p>
 <h4 id="Ending-Thoughts">Ending Thoughts</h4>
 <p>This way, by watching that the <code>Math</code> property of the global object never changes value, and that the <code>sqrt</code> property of the <code>Math</code> object never changes value, the code <code>Math.sqrt</code> is reduced from two object property lookups with a ton of error checks to a constant (not even a branch!) in the JIT’ed code.</p>
-<p>The watchpoint mechanism also helps other optimizations to generate better code. For example, the call opcode (which calls whatever is stored in <code>Math.sqrt</code>) has a so-called <code>ValueProfile</code> that records which functions it has called. For sane programs that does not mess up with the predefined objects, the value recorded will always be the <code>sqrt</code> intrinsic function. Normally this would allow the compiler to emit a check (that the result of expression <code>Math.sqrt</code> equals the <code>sqrt</code> intrinsic function) and speculatively inline <code>sqrt</code>. However, since the watchpoint already tells us that <code>Math.sqrt</code> <em>must</em> evaluates to the <code>sqrt</code> intrinsic function, the compiler can do better: it may omit the check and inline <code>sqrt</code> directly. Now, for sane programs, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
+<p>The watchpoint mechanism also helps other optimizations to generate better code. For example, the call opcode (which calls whatever is stored in <code>Math.sqrt</code>) has its own inline caching that records which functions it has called. For sane programs that does not mess up with the predefined objects, there will be only one callee recorded: the <code>sqrt</code> intrinsic function. Normally this would allow the compiler to emit a check (that the result of expression <code>Math.sqrt</code> equals the <code>sqrt</code> intrinsic function) and speculatively inline <code>sqrt</code>. However, since the watchpoint already tells us that <code>Math.sqrt</code> <em>must</em> evaluates to the <code>sqrt</code> intrinsic function, the compiler can do better: it may omit the check and inline <code>sqrt</code> directly. Now, for sane programs, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
 <p>Finally, a couple of side notes:</p>
 <ol>
 <li>If we want to avoid the case that the transition of another object results in invalidation of our code, we can give our object its own unique Structure, though the downside is that we might blow up the inline cache if we do it for too many objects.</li>
 <li>The slow-path does not fire the watchpoint if the watchpoint is in <code>DoesNotExist</code> or <code>Clear</code> state. This not only saves memory, but is also an advantage for the use case above: while it’s plausible to assume that sane programs will not change <code>Math.sqrt</code> frequently, it’s also plausible for them to change it at program start (e.g., to log a warning if the input to <code>sqrt</code> is negative). Since such code will execute in slow-path and before any fast-path relying on the <code>WatchpointSet</code> is built, they will not invalidate the <code>WatchpointSet</code>, as desired.</li>
 </ol>
 <h4 id="Acknowledgements">Acknowledgements</h4>
-<p>I thank Saam Barati from JSC team for teaching me all of these (and more) using his precious spare time. Of course, any mistakes in this post are mine.</p>
+<p>I thank Saam Barati from JSC team for teaching me all of these (and more) using his precious spare time, and for his valuable comments on this post. Of course, any mistakes in this post are mine.</p>
 <hr>
 <h4 id="Footnotes">Footnotes</h4>
 <hr class="footnotes-sep">
@@ -208,7 +208,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl2shqk5a000b9nm4bq3g0bpq" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl2tmuwby000bb7ok6nwici15" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -320,7 +320,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl2shqk59000a9nm4at8z3y9g" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl2tmuwbx000ab7ok7ay8h07w" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -400,7 +400,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl2shqk5800099nm47790gtzr" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl2tmuwbw0009b7oka0uc03gz" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -485,7 +485,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl2shqk5700089nm4hled3h49" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl2tmuwbv0008b7ok3de97ibp" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -601,7 +601,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl2shqk5600079nm4g66y5t9e" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl2tmuwbu0007b7ok3wnmb47y" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -711,7 +711,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl2shqk5400069nm4b3s0gmzd" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl2tmuwbt0006b7okbi6aa4bs" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -804,7 +804,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl2shqk5300059nm42lr4h625" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl2tmuwbs0005b7ok9qyz3es6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -882,7 +882,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl2shqk5200049nm4gnpi532u" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl2tmuwbr0004b7ok6zgg6m34" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -990,7 +990,7 @@ Native stack took 0.266 seconds.</p>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/09/2021-08-09/" data-id="cl2shqk4u00029nm42fn7b37h" class="article-share-link">
+      <a data-url="2021/08/09/2021-08-09/" data-id="cl2tmuwbp0002b7ok03xbe6cu" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1061,7 +1061,7 @@ It tells you something about the power of writing.<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/07/2021-08-07/" data-id="cl2shqk4q00009nm44xzu97sq" class="article-share-link">
+      <a data-url="2021/08/07/2021-08-07/" data-id="cl2tmuwbl0000b7ok5jssaawq" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
