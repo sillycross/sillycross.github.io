@@ -146,9 +146,10 @@
 <li>The C++ code that implements object property writes (the slow paths).</li>
 <li>The JIT’ed code that writes to a specific property of a specific structure (the fast paths).</li>
 </ol>
+<p>The fast paths are known as <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">inline caches</a>. Inline caching is probably the most important optimization in JSC, but I will leave its details to another post. For the purpose of this post, it’s sufficient to think of each inline cache fast-path as a JIT-compiled piece of code that is specialized for a certain structure <code>S</code> and a certain property name <code>prop</code>. Given a <code>value</code> and an object with structure <code>S</code>, it writes <code>value</code> to property <code>prop</code> of the object.</p>
 <p>The slow path case is easy to handle: whenever one writes to a property of an object, one checks whether there are Watchpoints watching the condition, and fire them. Of course, we are doing one extra check for every object property write. However, those code are already slow paths, so it doesn’t hurt too much to make them a bit more slower.</p>
 <p>The fast path case is trickier. A naive solution is to add a watchpoint check, as how we handled slow-path. However, this is unsatisfactory: now, every fast-path write is doing one extra check! We can afford slowing down the slow-path, but we want to keep the fast-path fast.</p>
-<p>So to keep the fast-path fast, the fast-path must not check for watchpoint conditions it violates at runtime. Now, there is only one solution: we <em>permenantly</em> invalidate the <code>WatchpointSet</code> as soon as the fast-path code is JIT’ed, no matter if there are watchers or not. As another consequence, recall that an object-property-write fast path works on a fixed property (e.g. <code>sqrt</code>) of a fixed Structure (e.g. <code>S</code>), but not on fixed objects. So our watchpoints have to be in the form of <code>&lt;Structure, property&gt;</code>: they work on Structure-level but not object-level (they are called <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/StructureRareData.h.html#JSC::StructureRareData::m_replacementWatchpointSets" target="_blank" rel="noopener">ValueReplacementWatchpointSet</a> in JSC). For example,when a fast-path writing the <code>sqrt</code> property of Structure <code>S</code> is built, we have to be conservative and permanently invalidate WatchpointSet <code>&lt;S, sqrt&gt;</code>, since we have no way to know if that fast-path is going to run on our <code>Math</code> object in the future.</p>
+<p>So, the fast-path must not check for watchpoint conditions it violates at runtime. Instead, we <em>permenantly</em> invalidate any and all <code>WatchpointSet</code> it could violate as soon as the fast-path code is JIT’ed, no matter if there are watchers or not. As another consequence, since the fast path works on a fixed property (e.g. <code>sqrt</code>) of a fixed Structure (e.g. <code>S</code>), but not on fixed objects, our watchpoints have to be in the form of <code>&lt;Structure, property&gt;</code>: they work on Structure-level but not object-level (they are called <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/StructureRareData.h.html#JSC::StructureRareData::m_replacementWatchpointSets" target="_blank" rel="noopener">ValueReplacementWatchpointSet</a> in JSC). For example,when a fast-path writing the <code>sqrt</code> property of Structure <code>S</code> is built, we have to be conservative and permanently invalidate WatchpointSet <code>&lt;S, sqrt&gt;</code>, since we have no way to know if that fast-path is going to run on our <code>Math</code> object in the future.</p>
 <h4 id="The-Design">The Design</h4>
 <p>This leads to the following design in JSC. A <code>WatchpointSet</code> has three possible <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/Watchpoint.h.html#JSC::WatchpointState" target="_blank" rel="noopener">states</a><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>:</p>
 <ol>
@@ -163,7 +164,7 @@
 <li>Code (C++ or JIT’ed) that is optimized assuming the watched condition is true.</li>
 </ol>
 <p>For (1), the slow-path must check in the code any watchable condition it violated, and if the corresponding <code>WatchpointSet</code> exists, fire all watchers. However, in such case, the slow-path have the choice between invalidate the <code>WatchpointSet</code>, or to keep it valid<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</p>
-<p>For (2), the fast-path does not check the <code>WatchpointSet</code> condition it violates, but we must transition any <code>WatchpointSet</code> it may violate at runtime to <code>Invalidated</code> when such a fast-path is JIT’ed (and we must create such <code>WatchpointSet</code> object if it does not exist yet).</p>
+<p>For (2), the fast-path code does not check the watchable condition it violates, but we must transit all <code>WatchpointSet</code>s it may violate when executed to <code>Invalidated</code> when such a fast-path is JIT’ed (and we must create such <code>WatchpointSet</code> object if it does not exist yet).</p>
 <p>For (3), we must disable the code when the watcher callback is invoked. If the code is C++ code, then disabling the codepath is as easy as flipping a flag. If the code is JIT’ed code, we must jettison the code<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>.</p>
 <h4 id="Back-to-Our-Example-and-Adaptive-Watchpoints">Back to Our Example, and Adaptive Watchpoints</h4>
 <p>Unfortunately, in our example, it turns out that only watching on <code>&lt;Structure, Property&gt;</code> is not enough. While this handles writes to <em>existing</em> properties correctly, one may create <em>new</em> properties in the object, thus transitioning its <code>Structure</code>. Say, one did a <code>Math.abc = 123;</code>. Since it adds a property to <code>Math</code>, the object <code>Math</code> gets a different structure <code>S2</code>, but our watchpoint is watching on <code>&lt;S, sqrt&gt;</code>, and we are screwed. To fix this issue, we must get notified when our object changes structure as well. However, as before, since an object-property-write fast-path works on a fixed <code>Structure</code> but not a fixed object, we have to put our watchpoint at <code>Structure</code> level. That is, we will have a <code>WachpointSet</code> on each Structure <code>S</code>, asserting that it never makes further transitions to other Structures (this is called a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/Structure.h.html#JSC::Structure::m_transitionWatchpointSet" target="_blank" rel="noopener">StructureTransitionWatchpointSet</a> in JSC).</p>
@@ -171,7 +172,7 @@
 <p>However, if the transition happened on object <code>Math</code> (i.e. <code>Math</code> itself gets a new Structure), then it’s possible to keep our optimized code valid: we just need to start watching <code>&lt;S2, sqrt&gt;</code> instead. So we will move our ValueReplacementWatchpoint to watch <code>&lt;S2, sqrt&gt;</code> and our StructureTransitionWatchpoint to watch <code>S2</code>, and keep our code valid<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. In JSC, such watchpoints whose action on fire is to move themselves to new places have a terminology <code>AdaptiveWatchpoints</code>.</p>
 <h4 id="Ending-Thoughts">Ending Thoughts</h4>
 <p>This way, by watching that the <code>Math</code> property of the global object never changes value, and that the <code>sqrt</code> property of the <code>Math</code> object never changes value, the code <code>Math.sqrt</code> is reduced from two object property lookups with a ton of error checks to a constant (not even a branch!) in the JIT’ed code.</p>
-<p>Furthermore, since this constant will be the intrinsic function implementing <code>sqrt</code> (as long as the user did not modify the value of <code>Math.sqrt</code>), the compiler will be sure that the call target is always the <code>sqrt</code> intrinsic function, so it can directly inline the implementation of <code>sqrt</code> into the code. Now, for sane programs that does not mess up with the predefined objects, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
+<p>The watchpoint mechanism also helps other optimizations to generate better code. For example, the call opcode (which calls whatever is stored in <code>Math.sqrt</code>) has a so-called <code>ValueProfile</code> that records which functions it has called. For sane programs that does not mess up with the predefined objects, the value recorded will always be the <code>sqrt</code> intrinsic function. Normally this would allow the compiler to emit a check (that the result of expression <code>Math.sqrt</code> equals the <code>sqrt</code> intrinsic function) and speculatively inline <code>sqrt</code>. However, since the watchpoint already tells us that <code>Math.sqrt</code> <em>must</em> evaluates to the <code>sqrt</code> intrinsic function, the compiler can do better: it may omit the check and inline <code>sqrt</code> directly. Now, for sane programs, all the terrible stuffs listed at the beginning of this post are gone, so the JIT’ed code to evaluate the <code>Math.sqrt</code> part is as efficient as if it were directly written in C++!</p>
 <p>Finally, a couple of side notes:</p>
 <ol>
 <li>If we want to avoid the case that the transition of another object results in invalidation of our code, we can give our object its own unique Structure, though the downside is that we might blow up the inline cache if we do it for too many objects.</li>
@@ -207,7 +208,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl2n1canw000bb5nf0p0deche" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl2shqk5a000b9nm4bq3g0bpq" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -319,7 +320,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl2n1canv000ab5nfhid7h0ap" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl2shqk59000a9nm4at8z3y9g" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -399,7 +400,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl2n1canu0009b5nfg7xn3n00" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl2shqk5800099nm47790gtzr" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -484,7 +485,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl2n1cant0008b5nf2z55gukx" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl2shqk5700089nm4hled3h49" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -600,7 +601,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl2n1cans0007b5nf6w64glpj" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl2shqk5600079nm4g66y5t9e" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -710,7 +711,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl2n1canr0006b5nfeasq0noe" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl2shqk5400069nm4b3s0gmzd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -803,7 +804,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl2n1canp0005b5nf5bhnf54m" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl2shqk5300059nm42lr4h625" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -881,7 +882,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl2n1cano0004b5nfd3wcgv4k" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl2shqk5200049nm4gnpi532u" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -989,7 +990,7 @@ Native stack took 0.266 seconds.</p>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/09/2021-08-09/" data-id="cl2n1canm0002b5nf9r350j6c" class="article-share-link">
+      <a data-url="2021/08/09/2021-08-09/" data-id="cl2shqk4u00029nm42fn7b37h" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1060,7 +1061,7 @@ It tells you something about the power of writing.<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/07/2021-08-07/" data-id="cl2n1canc0000b5nf0nuzhdk3" class="article-share-link">
+      <a data-url="2021/08/07/2021-08-07/" data-id="cl2shqk4q00009nm44xzu97sq" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
