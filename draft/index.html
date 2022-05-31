@@ -3,17 +3,17 @@
 <head>
   <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
   
-  <title>Understanding GC in JSC | </title>
+  <title>Understanding GC in JSC From Scratch | </title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <meta name="description" content="THIS IS AN INCOMPLETED DRAFT. Javascript relies on the garbage collector (GC) to reclaim memory. In this post, we will dig a little bit into JSC (the Javascript engine of WebKit)&#39;s garbage collection">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Understanding GC in JSC">
+<meta property="og:title" content="Understanding GC in JSC From Scratch">
 <meta property="og:url" content="draft/index.html">
 <meta property="og:site_name">
 <meta property="og:description" content="THIS IS AN INCOMPLETED DRAFT. Javascript relies on the garbage collector (GC) to reclaim memory. In this post, we will dig a little bit into JSC (the Javascript engine of WebKit)&#39;s garbage collection">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-05-15T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-05-25T02:56:00.127Z">
+<meta property="article:modified_time" content="2022-05-31T11:14:16.370Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -106,7 +106,7 @@
     
   
     <h1 class="article-title" itemprop="name">
-      Understanding GC in JSC
+      Understanding GC in JSC From Scratch
     </h1>
   
 
@@ -128,9 +128,11 @@
       
         <p>THIS IS AN INCOMPLETED DRAFT.</p>
 <p>Javascript relies on the garbage collector (GC) to reclaim memory. In this post, we will dig a little bit into JSC (the Javascript engine of <a href="https://webkit.org/" target="_blank" rel="noopener">WebKit</a>)'s garbage collection system.</p>
-<p>WebKit’s <a href="https://webkit.org/blog/7122/introducing-riptide-webkits-retreating-wavefront-concurrent-garbage-collector/" target="_blank" rel="noopener">blog post on GC</a> is a great post that explained the novelties of JSC’s GC and also positioned it within the context of various GC schemes in academia and industry. However, as someone with little GC background, I found WebKit’s blog post too hard to understand, and also too vague to understand the specific design used by JSC. So this blog post attempts to add in some more details.</p>
+<p>WebKit’s <a href="https://webkit.org/blog/7122/introducing-riptide-webkits-retreating-wavefront-concurrent-garbage-collector/" target="_blank" rel="noopener">blog post on GC</a> is a great post that explained the novelties of JSC’s GC and also positioned it within the context of various GC schemes in academia and industry. However, as someone with little GC background, I found WebKit’s blog post too hard to understand, and also too vague to understand the specific design used by JSC. So this blog post attempts to add in some more details, and aims to be understandable even by someone with little prior background on GC.</p>
 <p>The garbage collector in JSC is <a href="https://en.wikipedia.org/wiki/Tracing_garbage_collection#Moving_vs._non-moving" target="_blank" rel="noopener">non-compacting</a>, <a href="https://en.wikipedia.org/wiki/Tracing_garbage_collection#Generational_GC_(ephemeral_GC)" target="_blank" rel="noopener">generational</a> and mostly<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>-<a href="https://en.wikipedia.org/wiki/Tracing_garbage_collection#Stop-the-world_vs._incremental_vs._concurrent" target="_blank" rel="noopener">concurrent</a>. On top of being concurrent, JSC’s GC heavily employs lock-free programming for better performance.</p>
-<p>As we unfold the design, it’s likely that you want to question me:“Why is it designed this way, but not some other way?” However, understanding the correctness of a lock-free scheme is already no easy feat, not to mention optimizing it. Therefore, this post will first focus on understanding why JSC’s design is correct, only mark discussions on design motivation and alternatives like <sup>[Design Discussion N]</sup>. At the end, we will discuss the motivations behind the design decisions, the alternate designs possible and potential reasons that they are not chosen.</p>
+<p>As you can imagine, the design used by JSC is quite complex. So instead of diving into the complex invariants and protocols, we will start with the simplest design, and improve it step by step to converge at JSC’s design in the end. This way, we not only understand <em>why</em> JSC’s design is correct, but also <em>how</em> JSC’s design is reached.</p>
+<p>But first of all, let’s get into some backgrounds.</p>
+<!--As we unfold the design, it's likely that you want to question:"Why is it designed this way, but not some other way?" However, understanding the correctness of a lock-free scheme is already no easy feat, not to mention optimizing it. Therefore, we will first focus on understanding JSC's design, only mark design choice discussions like <sup>[Design Discussion N]</sup>. At the end, we will discuss the potential motivations behind JSC's design choices, and the potential reasons that why some alternatives are not chosen.-->
 <h4 id="Memory-Allocation-in-JSC">Memory Allocation in JSC</h4>
 <p>Memory allocator and GC are by nature tightly coupled – allocator allocates memory to be reclaimed by GC, and GC frees memory to be reused by allocator. In this section, we will briefly introduce JSC’s memory allocators.</p>
 <p>At the core of the memory allocation scheme in JSC is the data structure <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/BlockDirectory.h.html#JSC::BlockDirectory" target="_blank" rel="noopener">BlockDirectory</a><sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>. It implements a fixed-sized allocator, that is, an allocator that only allocates memory chunks of some fixed size <code>S</code>. The allocator keeps tracks of a list of fixed-sized (in current code, 16KB) memory pages (“blocks”) it owns, and a free list. Each block is divided into cells of size <code>S</code>, and has a footer at its end<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>, which contains various metadata information needed for GC and allocator, e.g., which cells are free. By aggregating and sharing metadata at the footer, it both saves memory and improves performance of related operations: we will go into details later.</p>
@@ -139,41 +141,76 @@
 <ol>
 <li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/CompleteSubspace.h.html#32" target="_blank" rel="noopener">CompleteSubspace</a>: this is a segregated allocator responsible for allocating small objects (max size about 8KB). Specifically, there is a pre-defined list of exponentially-growing size-classes<sup class="footnote-ref"><a href="#fn7" id="fnref7">[7]</a></sup>, and one <code>BlockDirectory</code> is used to handle allocation for each size class. So to allocate an object, you find the smallest size class large enough to hold the object, and allocate from that size class.</li>
 <li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation" target="_blank" rel="noopener">PreciseAllocation</a>: this is used to handle large allocations that cannot be handled by <code>CompleteSubspace</code> allocator<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup>. It simply relies on the standard (malloc-like) memory allocator, though in JSC a custom malloc implementation called <code>libpas</code> is used. The downside is that since <code>PreciseAllocation</code> is done on a per-object basis, it cannot aggregate and share metadata information of multiple objects together to save memory and improve performance (as <code>CompleteSubspace</code>’s block footer did). Therefore, every <code>PreciseAllocation</code> comes with a whopping overhead of a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation" target="_blank" rel="noopener">96-byte GC header</a> to store the various metadata information needed for GC for this object (though this overhead is justified since each allocation is already at least 8KB).</li>
-<li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/IsoSubspace.h.html#JSC::IsoSubspace" target="_blank" rel="noopener">IsoSubspace</a>: each <code>IsoSubspace</code> is used to allocate objects of a fixed type with a fixed size. So each <code>IsoSubspace</code> simply holds a <code>BlockDirectory</code> to do allocation. This is mainly a security hardening feature that makes use-after-free-based attacks harder<sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>.</li>
+<li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/IsoSubspace.h.html#JSC::IsoSubspace" target="_blank" rel="noopener">IsoSubspace</a>: each <code>IsoSubspace</code> is used to allocate objects of a fixed type with a fixed size. So each <code>IsoSubspace</code> simply holds a <code>BlockDirectory</code> to do allocation<sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>. This is mainly a security hardening feature that makes use-after-free-based attacks harder<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup>.</li>
 </ol>
-<p>As you can see, <code>CompleteSubspace</code> is the most interesting part that handles the common case: small allocations. <code>IsoSubspace</code> can be considered a simplified <code>CompleteSubspace</code>, and <code>PreciseAllocation</code> is the rare slow path.</p>
-<!-- However, since `PrecisionAllocation` is the slow path, the GC algorithm dealing with it is easier to understand. So we will first focus on how GC works on `PreciseAllocation`, and then discuss the performance optimizations designed for `CompleteSubspace`. -->
+<p>As you can see, <code>IsoSubspace</code> is mostly a simplified <code>CompleteSubspace</code>, so we will ignore it for the purpose of this post. <code>CompleteSubspace</code> is the one that handles the common case: small allocations, while <code>PreciseAllocation</code> is the rare slow path for large allocations.</p>
 <h4 id="Generational-GC-Basics">Generational GC Basics</h4>
-<p>In JSC’s generational GC model, each GC maybe either an eden GC or a full GC. The heap consists of a small “new space” (eden), holding the newly allocated objects, and a large “old space” holding the older objects that have survived one GC cycle. New objects are allocated in the eden. When the eden is full, an eden GC is invoked to garbage-collect the unreachable objects in eden. All the surviving objects in eden are then considered to be in the old space<sup><a href="#altdesign1">[Design Discussion 1]</a></sup>. To reclaim objects in the old space, a full GC is needed.</p>
+<p>In JSC’s generational GC model, each GC cycle may be either an eden GC or a full GC. The heap consists of a small “new space” (eden), holding the newly allocated objects, and a large “old space” holding the older objects that have survived one GC cycle. New objects are allocated in the eden. When the eden is full, an eden GC is invoked to garbage-collect the unreachable objects in eden. All the surviving objects in eden are then considered to be in the old space<sup><a href="#altdesign1">[Design Discussion 1]</a></sup>. To reclaim objects in the old space, a full GC is needed.</p>
 <p>The effectiveness of the above scheme relies on the so-called “generational hypothesis”:</p>
 <ol>
 <li>Most objects collected by the GC are young objects (died when they are still in eden), so eden GC (which only collects the eden) is sufficient to reclaim most of the memory.</li>
 <li>Pointers from old space to eden is much rarer than pointers from eden to old space or pointers from eden to eden, so an eden GC’s runtime is approximately linear to the size of the eden, as it only needs to start from a small subset of the old space. This implies that the cost of GC can be amortized by the cost of allocation.</li>
 </ol>
-<p>In JSC, every object managed by the GC has two kinds of markers:</p>
+<h4 id="Inlined-vs-Outlined-Metadata-Why">Inlined vs. Outlined Metadata: Why?</h4>
+<p>In JSC, every object managed by the GC carries the following metadata:</p>
 <ol>
-<li>Every object managed by GC inherit the <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/JSCell.h.html#JSC::JSCell" target="_blank" rel="noopener">JSCell</a> class, which contains a 1-byte member <code>cellState</code>. This <code>cellState</code> is a color marker used by GC. It has <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/CellState.h.html#JSC::CellState" target="_blank" rel="noopener">three possible colors</a>: white, grey and black.</li>
-<li>Every object also has two out-of-object mark bits: <code>isNewlyAllocated</code> and <code>isMarked</code>. For objects allocated by <code>PreciseAllocation</code>, the bits reside in the GC header. For objects allocated by <code>CompleteSubspace</code>, the bits reside in the block footer.</li>
+<li>Every object managed by GC inherit the <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/runtime/JSCell.h.html#JSC::JSCell" target="_blank" rel="noopener">JSCell</a> class, which contains a 1-byte member <code>cellState</code>. This <code>cellState</code> is a color marker used by GC. It has two possible colors: white and black<sup class="footnote-ref"><a href="#fn11" id="fnref11">[11]</a></sup>.</li>
+<li>Every object also has two out-of-object metadata bits: <code>isNew</code><sup class="footnote-ref"><a href="#fn12" id="fnref12">[12]</a></sup> and <code>isMarked</code>. For objects allocated by <code>PreciseAllocation</code>, the bits reside in the GC header. For objects allocated by <code>CompleteSubspace</code>, the bits reside in the block footer.</li>
 </ol>
-<p>Why do we want the outlined marks? Why can’t we steal two bits from <code>cellState</code> and store <code>isNewlyAllocated</code> and <code>isMarked</code> inline as well?</p>
-<p>The inlined mark <code>cellState</code> is easy to access for the mutator thread (the thread executing Javascript code), since it is just a field in the object. However, it has bad memory locality for GC and allocators, which need to quickly traverse through all the marks of all objects in some block owned by <code>CompleteSubspace</code> (which is the common case). Outlined marks have the opposite performance characteristics: they are more expensive to access for the mutator thread, but since they are aggregated into bitvectors and stored in the block footer of each block, GC and allocators can traverse them really fast.</p>
-<p>So JSC keeps both marks to get the better of both worlds: the mutator thread’s fast path will only concern the inlined mark <code>cellState</code>, while the GC and allocator logic can also take advantage of the memory locality of the outlined marks.</p>
+<p>This may seem odd at first glance since <code>isNew</code> and <code>isMarked</code> could have been stored in the unused bits of <code>cellState</code>. However, this is intentional.</p>
+<p>The inlined metadata <code>cellState</code> is easy to access for the mutator thread (the thread executing Javascript code), since it is just a field in the object. However, it has bad memory locality for GC and allocators, which need to quickly traverse through all the metadata of all objects in some block owned by <code>CompleteSubspace</code> (which is the common case). Outlined metadata have the opposite performance characteristics: they are more expensive to access for the mutator thread, but since they are aggregated into bitvectors and stored in the block footer of each block, GC and allocators can traverse them really fast.</p>
+<p>So JSC keeps both inlined and outlined metadata to get the better of both worlds: the mutator thread’s fast path will only concern the inlined <code>cellState</code>, while the GC and allocator logic can also take advantage of the memory locality of the outlined bits <code>isNew</code> and <code>isMarked</code>.</p>
 <p>Of course, the cost of this is a more complex design… so we have to unfold it bit by bit.</p>
-<h4 id="The-cellState-Mark">The cellState Mark</h4>
-<p>Let’s ignore the outlined marks for now, and focus on the eden GC and the mutator thread first, which mainly only conerns about the inlined mark <code>cellState</code>.</p>
-<p>The eden GC uses a breadth-first search to scan the eden space. An object’s <code>cellState</code> is black if it has been scanned, i.e., all its children has been put into the BFS queue. An object is grey if it is currently in the BFS queue. An object is white if it has not been touched by the scan yet. Notably, this implies that all objects in the old space are black.</p>
-<p>In pseudocode, the logic for the marking phase of the eden GC is as follows:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (!<span class="built_in">queue</span>.empty()) &#123;</span><br><span class="line">  JSCell* obj = <span class="built_in">queue</span>.pop();</span><br><span class="line">  obj-&gt;m_cellState = Black;</span><br><span class="line">  obj-&gt;ForEachChild([&amp;](JsCell* child) &#123;</span><br><span class="line">    <span class="keyword">if</span> (child-&gt;m_cellState == White) &#123;    </span><br><span class="line">      child-&gt;m_cellState = Grey;</span><br><span class="line">      <span class="built_in">queue</span>.push(child);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>Note that the scan always mark an object black <em>before</em> it visits its children <sup><a href="#altdesign1">[Design Discussion 1]</a></sup>.</p>
-<p>But where does the scan start, so that we can scan through every reachable object in eden? It turns out that there are two cases to consider:</p>
+<h4 id="A-Really-Naive-Stop-the-World-Generational-GC">A Really Naive Stop-the-World Generational GC</h4>
+<p>Let’s start with a really naive design just to understand what is needed. We will design a generational, but stop-the-world (i.e. not incremental or concurrent) GC, with no performance optimizations at all. In this design, the mutator side transfers control to the GC subsystem at “safe points”<sup class="footnote-ref"><a href="#fn13" id="fnref13">[13]</a></sup> to start a GC cycle (eden or full). The GC subsystem performs the GC cycle from the beginning to the end (as a result, the application cannot run during this potentially long period, thus “stop-the-world”), and then transfer control back to the mutator side.</p>
+<p>For this purpose, let’s temporarily forget about <code>CompleteSubspace</code>: it is an optimized version of <code>PrecisionAllocation</code> for small allocations, and while it is an important optimization, it’s easier to understand the GC algorithm without it.</p>
+<p>It turns out that in this design, all we need is one <code>isMarked</code> bit. The <code>isMarked</code> bit will indicate if the object is reachable at the end of the last GC cycle (and consequently, is in the old space, since any object that survived a GC cycle is in old space). All objects are born with <code>isMarked = false</code>.</p>
+<p>The GC will use a breadth-first search to scan and mark objects. For full GC, we want to reset all <code>isMarked</code> bit to <code>false</code> at the beginnning, and do a BFS to scan and mark all objects reachable from GC roots. Then all the unmarked objects are known to be dead. For eden GC, we only want to scan the eden space. Fortunately, all objects in the old space are already marked at the end of the previous GC cycle, so they are naturally ignored by the BFS, so we can simply reuse the same BFS algorithm in full GC. In pseudo-code:</p>
+<p>Eden GC preparation phase: no work is needed.</p>
+<p>Full GC preparation phase<sup class="footnote-ref"><a href="#fn14" id="fnref14">[14]</a></sup>:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (JSCell* obj : heap) </span><br><span class="line">  obj-&gt;isMarked = <span class="literal">false</span>;</span><br></pre></td></tr></table></figure>
+<p>Eden/Full GC marking phase:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (!<span class="built_in">queue</span>.empty()) &#123;</span><br><span class="line">  JSCell* obj = <span class="built_in">queue</span>.pop();</span><br><span class="line">  obj-&gt;ForEachChild([&amp;](JSCell* child) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!child-&gt;isMarked) &#123;   </span><br><span class="line">      child-&gt;isMarked = <span class="literal">true</span>; </span><br><span class="line">      <span class="built_in">queue</span>.push(child);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Eden/Full GC collection phase:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// One can easily imagine optimization to make eden collection </span></span><br><span class="line"><span class="comment">// traverse only the eden space. We ignore it for simplicity.</span></span><br><span class="line"><span class="keyword">for</span> (JSCell* obj : heap) </span><br><span class="line">  <span class="keyword">if</span> (!obj-&gt;isMarked) </span><br><span class="line">    <span class="built_in">free</span>(obj);</span><br></pre></td></tr></table></figure>
+<p>But where does the scan start, so that we can scan through every reachable object? For full GC, the answer is clear: we just start the scan from all GC roots<sup class="footnote-ref"><a href="#fn15" id="fnref15">[15]</a></sup>. However, for eden GC, in order to reliably scan through all reachable objects, the situation is slightly more complex:</p>
 <ol>
-<li>Of course, we need to push the GC roots to the initial queue.</li>
-<li>If an object in the old space contains a pointer to an object in eden, we need to put the old space object to the initial queue<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup>.</li>
+<li>Of course, we still need to push the GC roots to the initial queue.</li>
+<li>If an object in the old space contains a pointer to an object in eden, we need to put the old space object to the initial queue<sup class="footnote-ref"><a href="#fn16" id="fnref16">[16]</a></sup>.</li>
 </ol>
-<p>The invariant for the second case is maintained by the mutator side. Specifically, whenever one writes a pointer slot of some object <code>A</code> in the heap to point to another object <code>B</code>, one needs to check if <code>A</code> is black and <code>B</code> is white. If so, one needs to put <code>A</code> into a <code>rememberedSet</code>. Eden GC must treat the <code>rememberedSet</code> as if they were GC roots. This is called a <code>WriteBarrier</code>.</p>
-<p>However, in JSC, the <code>WriteBarrier</code> only checks if <code>A</code> is black: it doesn’t concern if <code>B</code> is white. We will leave the discussion of this design choice to <sup><a href="#altdesign1">[Design Discussion 1]</a></sup>.</p>
-<p>In pseudocode, the logic for a WriteBarrier is as follows:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Executed after one writes a pointer into a field of 'obj'</span></span><br><span class="line"><span class="keyword">if</span> (obj-&gt;m_cellState == Black) &#123;</span><br><span class="line">  addToRememberedSet(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>The invariant for the second case is maintained by the mutator side. Specifically, whenever one writes a pointer slot of some object <code>A</code> in the heap to point to another object <code>B</code>, one needs to check if <code>A.isMarked</code> is <code>true</code> and <code>B.isMarked</code> is <code>false</code>. If so, one needs to put <code>A</code> into a “remembered set”. Eden GC must treat the objects in the remembered set as if they were GC roots. This is called a <code>WriteBarrier</code>. In pseudo-code:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Executed after writing a pointer to 'dst' into a field of 'obj'</span></span><br><span class="line"><span class="keyword">if</span> (obj-&gt;isMarked &amp;&amp; !dst-&gt;isMarked) </span><br><span class="line">  addToRememberedSet(obj);</span><br></pre></td></tr></table></figure>
+<h4 id="Getting-Incremental">Getting Incremental</h4>
+<p>The stop-the-world GC isn’t feasible for production use. A GC cycle (especially a full GC cycle) can take a long time. Since the mutator (application logic) cannot run during the period, the application would appear irresponsive to the user, which is very bad user experience.</p>
+<p>A natural way to shorten this irresponsive period is to run GC incrementally: at safe points, the mutator transfers control to the GC. The GC only runs for a short time, doing a portion of the work for the current GC cycle (eden or full), then return control to the mutator. This way, each GC cycle is splitted into many small steps, so the irresponsive periods are less noticeable for the user.</p>
+<p>Incremental GC poses a few new challenges to the GC scheme.</p>
+<p>The first challenge is that the GC thread and the mutator thread have more interactions: the mutator thread, namely the allocator and the <code>WriteBarrier</code>, must be prepared to see states arisen from a partially-completed GC cycle. And the GC thread must correctly mark all reachable objects despite changes made by the mutator thread in between.</p>
+<p>Specifically, our full GC must change: imagine that the full GC scanned some object <code>o</code> and handed back control to mutator, then the mutator changed a field of <code>o</code> to point to some other object <code>dst</code>. The object <code>dst</code> must not be missed from scanning. Fortunately, in such case <code>o</code> will be <code>isMarked</code> and <code>dst</code> will be <code>!isMarked</code> (if <code>dst</code> has <code>isMarked</code> then it has been scanned, so there’s nothing to worry about), so <code>o</code> will be put into the remembered set. Therefore, for full GC to function correctly in the incremental GC scheme, it must consider the remembered set as GC root as well, just like the eden GC.</p>
+<p>The other parts of the algorithm as of now can remain unchanged (we leave the proof of correctness as an excerise for the reader). Nevertheless, “what happens if a GC cycle is run partially?” is something that we must keep in mind as we add more optimizations.</p>
+<p>The second challenge is that the mutator thread can repeatedly put an old space object into the remembered set, and result in redundant work for the GC: for example, the GC popped some object <code>o</code> in the remembered set, traversed from it, and handed over control to mutator. The mutator modified <code>o</code> again, putting it back to the remembered set. If this happens too often, the incremental GC could do a lot more work than a stop-the-world GC.</p>
+<p>The obvious mitigation is to have the GC scan the remembered set last: only when the queue has otherwise been empty do we start popping from the remembered set. However, it turns out that this is not enough. JSC employs a technique called <em>Space-Time Scheduler</em> to further mitigate this problem. In short, if it obverves that the mutator was allocating too fast, the mutator would get decreasingly less time quota to run so the GC can catch up (and in the extreme case, the mutator would get zero time quota to run, so it falls back to the stop-the-world approach). The <a href="https://webkit.org/blog/7122/introducing-riptide-webkits-retreating-wavefront-concurrent-garbage-collector/" target="_blank" rel="noopener">WebKit blog post</a> has explained it very clearly, so feel free to take a look if you are interested.</p>
+<p>Anyway, let’s update the pseudo-code for the eden/full GC marking phase:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (!<span class="built_in">queue</span>.empty() &amp;&amp; !rmbSet.empty()) &#123;</span><br><span class="line">  <span class="comment">// Both eden GC and full GC needs to consider remembered set</span></span><br><span class="line">  <span class="comment">// Prioritize popping from queue, pop remembered set last</span></span><br><span class="line">  JSCell* obj = !<span class="built_in">queue</span>.empty() ? <span class="built_in">queue</span>.pop() : rmbSet.pop();</span><br><span class="line">  obj-&gt;ForEachChild([&amp;](JSCell* child) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!child-&gt;isMarked) &#123;   </span><br><span class="line">      child-&gt;isMarked = <span class="literal">true</span>; </span><br><span class="line">      <span class="built_in">queue</span>.push(child);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="Incorporate-in-CompleteSubspace">Incorporate in CompleteSubspace</h4>
+<p>It’s time to get our <code>CompleteSubspace</code> allocator back so we don’t have to suffer the huge per-object GC header overhead incurred by <code>PreciseAllocation</code>.</p>
+<p>For <code>PreciseAllocation</code>, the actual memory management work is done by <code>malloc</code>: when the mutator wants to allocate an object, it just <code>malloc</code> it, and when the GC discovers a dead object, it just <code>free</code> it.</p>
+<p><code>CompleteSubspace</code> introduces another complexity, as it only allocate/deallocate memory from the OS at 16KB-block level, and does memory management itself to divide the blocks into cells that it serves to the application. Therefore, it has to track whether each of its cells is available for allocation. The mutator allocates from the available cells, and the GC marks dead cells as available for allocation again.</p>
+<p>The <code>isMarked</code> bit is not enough for the <code>CompleteSubspace</code> allocator to determine if a cell contains a live object or not: newly allocated objects have <code>isMarked = false</code> but are clearly live objects. Therefore, we need another bit.</p>
+<p>One can easily imagine some kind of <code>isLive</code> bit that is <code>true</code> for all live objects, which is only flipped to <code>false</code> by GC when the object is dead. All <code>isLive = false</code> cells are then available for allocation by the allocator. However, JSC employed a slightly different scheme, which is needed to facilitate various optimizations that we will mention later.</p>
+<p>As you have seen earlier, the bit used by JSC is called <code>isNew</code>. The most important two invariants are, at any moment:</p>
+<ol>
+<li>An object is dead iff its <code>isNew = false</code> and <code>isMarked = false</code>.</li>
+<li>All objects are born with <code>isNew = true</code> and <code>isMarked = false</code>.</li>
+</ol>
+<p>At the end of each eden or full GC cycle, the <code>isNew</code> bit of all objects are set to <code>false</code>. Since at the end of the cycle, an object is live iff its <code>isMarked</code> is <code>true</code>, after setting <code>isNew</code> to <code>false</code>, our invariant on dead object is satisfied.</p>
+<p>Incremental GC introduced another complexity.</p>
+<h4 id="Logical-Versioning">Logical Versioning</h4>
+<p>All the hassles we had about <code>isNew</code> (instead of a more straightforward <code>isLive</code>) is to enable the logical versioning optimization.</p>
+<h4 id="TODO-cellState">TODO: cellState</h4>
+<p>In pseudocode, the logic for the marking phase of the eden GC is as follows:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (!<span class="built_in">queue</span>.empty()) &#123;</span><br><span class="line">  JSCell* obj = <span class="built_in">queue</span>.pop();</span><br><span class="line">  obj-&gt;m_cellState = Black;</span><br><span class="line">  obj-&gt;ForEachChild([&amp;](JSCell* child) &#123;</span><br><span class="line">    <span class="keyword">if</span> (child-&gt;m_cellState == White) &#123;    </span><br><span class="line">      child-&gt;m_cellState = Grey;</span><br><span class="line">      <span class="built_in">queue</span>.push(child);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Note that the scan always mark an object black <em>before</em> it visits its children <sup><a href="#altdesign1">[Design Discussion 1]</a></sup>.<br>
+However, in JSC, the <code>WriteBarrier</code> only checks if <code>A</code> is black: it doesn’t concern if <code>B</code> is white. We will leave the discussion of this design choice to <sup><a href="#altdesign1">[Design Discussion 1]</a></sup>.</p>
 <h4 id="Getting-Concurrent-–-cellState-Mark">Getting Concurrent – cellState Mark</h4>
 <p>In JSC, the marking phase runs concurrently with the mutator thread, and they both access the <code>cellState</code>. JSC does not want to use a lock for performance reasons, so interesting race condition between mutator’s <code>WriteBarrier</code> and GC’s marking logic rises.</p>
 <p>Suppose <code>o</code> is an object, and the mutator wants to store a pointer to another object <code>target</code> into a field <code>f</code> of <code>o</code>. The marking logic of GC wants to scan <code>o</code> and append its children into the queue. Since <code>target</code> may be in eden, we need to make sure that eden GC will observe the <code>o -&gt; target</code> pointer link.</p>
@@ -224,7 +261,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <div style="background-color:#A8B545">[GC Line 3] t2 = Load(o.f)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// t2 = some old value</div>
 </li>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 </ol>
 <p>Now, the mutator did not add <code>o</code> to remembered set (because <code>t1</code> is Grey, not Black), and <code>t2</code> in GC is the old value in <code>o.f</code> instead of <code>target</code>, so GC did not push <code>target</code> into the queue. So the pointer link from <code>o</code> to <code>target</code> is missed in GC. This can result in <code>target</code> being wrongly reclaimed despite it is live.</p>
@@ -234,7 +271,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <div style="background-color:#A8B545">[GC Line 3] t2 = Load(o.f)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// t2 = some old value</div>
 </li>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#FFCB9A">[Mutator Line 3] t1 = Load(o.cellState)&nbsp;&nbsp;&nbsp;&nbsp;// t1 = Grey</div>
@@ -248,7 +285,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <p>Interleaving 1:</p>
 <ol>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#FFCB9A">[Mutator Line 3] t1 = Load(o.cellState)&nbsp;&nbsp;&nbsp;&nbsp;// t1 = Grey</div>
@@ -270,7 +307,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <div style="background-color:#A8B545">[GC Line 3] t2 = Load(o.f)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// t2 = some old value</div>
 </li>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#FFCB9A">[Mutator Line 3] t1 = Load(o.cellState)&nbsp;&nbsp;&nbsp;&nbsp;// t1 = Black</div>
@@ -280,7 +317,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <p>Interleaving 3:</p>
 <ol>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#A8B545">[GC Line 1] Store(o.cellState, Black)</div>
@@ -296,7 +333,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <p>Interleaving 4:</p>
 <ol>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#A8B545">[GC Line 1] Store(o.cellState, Black)</div>
@@ -331,7 +368,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <div style="background-color:#A8B545">[GC Line 1] Store(o.cellState, Black)</div>
 </li>
 <li>
-<div style="background-color:#FFCB9A">[Mutator Line 1] store(o.f, target)</div>
+<div style="background-color:#FFCB9A">[Mutator Line 1] Store(o.f, target)</div>
 </li>
 <li>
 <div style="background-color:#A8B545">[GC Line 3] t2 = Load(o.f)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// t2 = target</div>
@@ -348,9 +385,9 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 <ol class="footnotes-list">
 <li id="fn1" class="footnote-item"><p>Brief stop-the-world pause is still required at the start and end of each GC cycle, and may be intentionally performed if the mutator thread (i.e. the thread running Javascript code) is producing garbage too fast for the GC thread to keep up with. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn2" class="footnote-item"><p>The actual allocation logic is implemented in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/LocalAllocator.h.html#JSC::LocalAllocator" target="_blank" rel="noopener">LocalAllocator</a>. Despite that in the code <code>BlockDirectory</code> is holding a linked list of <code>LocalAllocator</code>, (at time of writing, for the codebase version linked in this blog) the linked list always contains exactly one element, so the <code>BlockDirectory</code> and <code>LocalAllocator</code> is one-to-one and can be viewed as an integrated component. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+<li id="fn2" class="footnote-item"><p>The actual allocation logic is implemented in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/LocalAllocator.h.html#JSC::LocalAllocator" target="_blank" rel="noopener">LocalAllocator</a>. Despite that in the code <code>BlockDirectory</code> is holding a linked list of <code>LocalAllocator</code>, (at time of writing, for the codebase version linked in this blog) the linked list always contains exactly one element, so the <code>BlockDirectory</code> and <code>LocalAllocator</code> is one-to-one and can be viewed as an integrated component. This relationship might change in the future, but it doesn’t matter for the purpose of this post anyway. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn3" class="footnote-item"><p>Since the footer resides at the end of a block, one can do a simple bit math from any object pointer to access the footer of the block it resides in. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+<li id="fn3" class="footnote-item"><p>Since the footer resides at the end of a 16KB block, and the block is also 16KB aligned, one can do a simple bit math from any object pointer to access the footer of the block it resides in. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
 </li>
 <li id="fn4" class="footnote-item"><p>Similar to that per-cell information is aggregated and stored in the block footer, per-block information is aggregated as bitvectors and stored in <code>BlockDirectory</code> for fast lookup. Specifically, two bitvectors <code>empty</code> and <code>canAllocateButNotEmpty</code> track if a block is empty, or partially empty. The <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/BlockDirectoryBits.h.html#_M/FOR_EACH_BLOCK_DIRECTORY_BIT" target="_blank" rel="noopener">code</a> is relatively confusing because the bitvectors are <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/BlockDirectoryBits.h.html#JSC::BlockDirectoryBits::Segment" target="_blank" rel="noopener">layouted in a non-standard way</a> to make resizing easier, but conceptually it’s just one bitvector for each boolean per-block property. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
 </li>
@@ -358,13 +395,25 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 </li>
 <li id="fn6" class="footnote-item"><p>In fact, it also <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/LocalAllocator.cpp.html#195" target="_blank" rel="noopener">attempts to steal</a> blocks from other allocators, and the OS memory allocator may have <a href="https://sillycross.github.io/r/WebKit/WTF/Headers/wtf/Gigacage.h.html" target="_blank" rel="noopener">some special requirements</a> required for the VM, but we ignore those details for simplicity. <a href="#fnref6" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn7" class="footnote-item"><p>In the current implementation, the list of sizes (byte) are 16, 32, 48, 64, 80, then <code>80 * 1.4 ^ n</code> for <code>n &gt;= 1</code> up to about 8KB. <a href="#fnref7" class="footnote-backref">↩︎</a></p>
+<li id="fn7" class="footnote-item"><p>In the current implementation, the list of sizes (byte) are 16, 32, 48, 64, 80, then <code>80 * 1.4 ^ n</code> for <code>n &gt;= 1</code> up to about 8KB. Exponential growth guarantees that the overhead due to internal fragmentation is at most a fraction (in this case, 40%) of the total allocation size. <a href="#fnref7" class="footnote-backref">↩︎</a></p>
 </li>
 <li id="fn8" class="footnote-item"><p>An interesting implementation detail is that <code>IsoSubspace</code> and <code>CompleteSubspace</code> always return memory aligned to 16 bytes, but <code>PreciseAllocation</code> always return memory address that has reminder 8 module 16. This allows identifying whether an object is allocated by <code>PreciseAllocation</code> with a simple bit math. <a href="#fnref8" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn9" class="footnote-item"><p>Memory of an <code>IsoSubspace</code> is only used by this <code>IsoSubspace</code>, never stolen by other allocators. As a result, a memory address in <code>IsoSubspace</code> can only be reused to allocate objects of the same type. So for any type <code>A</code> allocated by <code>IsoSubspace</code>, even if there is a use-after-free bug on type <code>A</code>, it is impossible to allocate <code>A</code>, free it, allocate type <code>B</code> at the same address, and exploit the bug to trick the VM into interpreting an integer field in <code>B</code> controlled by attacker as a pointer field in <code>A</code>. <a href="#fnref9" class="footnote-backref">↩︎</a></p>
+<li id="fn9" class="footnote-item"><p>JSC has another small optimization here. Sometimes a <code>IsoSubspace</code> contains so few objects that it’s a waste to hold them using a 16KB memory page (the block size of <code>BlockDirectory</code>). So the first few memory pages of <code>IsoSubspace</code> use the so-called “lower-tier”, which are smaller memory pages allocated by <code>PreciseAllocation</code>. In this post, we will ignore this design detail for simplicity. <a href="#fnref9" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn10" class="footnote-item"><p>Note that we push the old space object into the queue, not the eden object, because this pointer could have been overwritten at the start of the GC cycle, making the eden object potentially collectable. <a href="#fnref10" class="footnote-backref">↩︎</a></p>
+<li id="fn10" class="footnote-item"><p>Memory of an <code>IsoSubspace</code> is only used by this <code>IsoSubspace</code>, never stolen by other allocators. As a result, a memory address in <code>IsoSubspace</code> can only be reused to allocate objects of the same type. So for any type <code>A</code> allocated by <code>IsoSubspace</code>, even if there is a use-after-free bug on type <code>A</code>, it is impossible to allocate <code>A</code>, free it, allocate type <code>B</code> at the same address, and exploit the bug to trick the VM into interpreting an integer field in <code>B</code> controlled by attacker as a pointer field in <code>A</code>. <a href="#fnref10" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn11" class="footnote-item"><p>There is one additional color <code>Grey</code> in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/CellState.h.html#JSC::CellState" target="_blank" rel="noopener">the code</a>. However, it turns out that <code>White</code> and <code>Grey</code> makes no difference (you can verify it by grepping all use of <code>cellState</code> and observe that the only comparison on <code>cellState</code> is checking if it is <code>Black</code>). The comments explaining what the colors mean are also a bit outdated. This is likely a historical artifact. In my opinion JSC should really clean it up and update the comment, as it can easily cause confusion to readers who intend to understand the design. <a href="#fnref11" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn12" class="footnote-item"><p>The bit is actually called <code>isNewlyAllocated</code> in the code. We shorten it to <code>isNew</code> for convenience in this post. <a href="#fnref12" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn13" class="footnote-item"><p><em>Safe point</em> is a terminology in GC. At a <em>safe point</em>, the heap and stack is in a coherent state understandable by the GC, so the GC can correctly trace out which objects are dead or live. <a href="#fnref13" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn14" class="footnote-item"><p>For <code>PreciseAllocation</code>, all allocated objects are chained into a linked list, so we can traverse all objects (live or dead) easily. This is not efficient: we will explain the optimizations for <code>CompleteSubspace</code> later. <a href="#fnref14" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn15" class="footnote-item"><p>Keep in mind that while this is true for now, as we add more optimizations to the design, this will no longer be true. <a href="#fnref15" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn16" class="footnote-item"><p>Note that we push the old space object into the queue, not the eden object, because this pointer could have been overwritten at the start of the GC cycle, making the eden object potentially collectable. <a href="#fnref16" class="footnote-backref">↩︎</a></p>
 </li>
 </ol>
 </section>
@@ -379,7 +428,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="draft/index.html" data-id="cl3kzww310003bhn471w796jt" class="article-share-link">
+      <a data-url="draft/index.html" data-id="cl3u2b7ww0003agowgtwk4rkq" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -411,7 +460,7 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
   
   <div class="sidebar-module">
     <h4>Archives</h4>
-    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">3</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">4</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
   </div>
 
 
@@ -420,6 +469,10 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
   <div class="sidebar-module">
     <h4>Recents</h4>
     <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="../2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+        </li>
       
         <li>
           <a href="../2022/04/30/2022-04-30/">The Watchpoint Mechanism in JSC</a>
@@ -435,10 +488,6 @@ queue.append(t2)&nbsp;&nbsp;// some if-check omitted<br>
       
         <li>
           <a href="../2021/10/24/2021-10-24/">Some Random Thoughts</a>
-        </li>
-      
-        <li>
-          <a href="../2021/09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
         </li>
       
     </ul>
