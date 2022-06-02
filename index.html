@@ -98,92 +98,13 @@
         <div class="col-sm-8 blog-main">
           
   
-    <article id="post-2022-05-31" class="article article-type-post" itemscope itemprop="blogPost">
-
-  <header class="article-header">
-    
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
-    </h1>
-  
-
-
-  </header>
-
-  <div class="article-meta">
-    <div class="article-datetime">
-  <a href="2022/05/31/2022-05-31/" class="article-date"><time datetime="2022-05-31T00:00:00.000Z" itemprop="datePublished">2022-05-31</time></a>
-</div>
-
-    
-    
-
-  </div>
-  <div class="article-inner">
-
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>Recently I decided to get a new laptop to replace my 5-years-old one. I happened to discover something called “barebone laptop”, which are essentially laptops with no RAM or SSD installed and no brand logo painted.</p>
-<p>The barebone laptop manufacturers generally only provide bulk sale to OEM manufacturers. Since retail sale is not possible directly, there is a niche market for buying in barebone laptops in bulk and resell them to end customers, and there are small business who live on this niche, which is the easiest way for one to buy a barebone.</p>
-<p>Apart from being more environment-friendly (by reusing the RAM and SSD from the old laptop), the main advantage of a barebone is the price. My new <code>Clevo NP70PNP</code> bought from R&amp;J Tech (a barebone reseller business) is $1300, while a <code>Dell</code> laptop with the identical configuration<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> is sold at $2650. It’s surprising that Dell at least doubled the price<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup> by simply plugging in the RAM and SSD and painting their logo on top<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>, and their customers are still happily buying it.</p>
-<p>Anyway, let’s get back to the topic. My experience is that the <code>Clevo NP70PNP</code> can work very well with Ubuntu, though a few tweaks are needed. The hardest part is that it’s very hard to find the necessary tweaks in Google due to the unpopularity of barebone laptops, which is why I’m taking notes here.</p>
-<ol>
-<li>It has the Intel AX201 Wifi card, which doesn’t work in Ubuntu 20.04, and the reason is the kernel version, so not fixable by manually installing the firmware. However, Ubuntu 22.04 (just released last month) supports the Wifi card out of the box.</li>
-<li>The Ubuntu 22.04 live-USB black screens on regular boot, but can be fixed by selecting <code>safe graphics</code> at boot menu. It’s a pain – for whatever reason it takes 10 minutes to load the desktop, but fortunately this is only needed for live-USB install: after the install, the GPU driver and the graphics work fine.</li>
-<li>The touchpad (model <code>FTCS1000:01 2808:0102</code>) is the one that took me the longest to make work. It works initially, but would fail randomly after some time. After a lot of fruitless googling, it turns out that the GPU setting is the problem! (I seriously have no idea why.) As it turns out, the fix is to disable <code>MS Hybrid</code> for GPU. One can do this either in BIOS (in <code>Advanced Chip Settings</code>, switch the option from <code>MS Hybrid</code> to <code>Discrete GPU Only</code>), or in Ubuntu NVIDIA X Server Settings (in <code>PRIME settings</code> choose <code>Performance</code>).</li>
-<li>Even after the tweak, there are still some minor issues with touchpad. Specifically, the feature that automatically disables touchpad when external mouse is present or while typing does not work, since for some reason the touchpad cannot be disabled from <code>xinput</code>. However, for some reason, it can still be disabled in GNOME by bash command <code>gsettings set org.gnome.desktop.peripherals.touchpad send-events disabled</code>. So I wrote a <code>udev</code> rule to automatically disable the touchpad on external mouse plugging in and re-enable it when the external mouse is plugged out. Googling any <code>udev</code> rule tutorial should be sufficient. Automatically disabling touchpad on typing seems much harder.</li>
-<li>There are some minor issue with Bluetooth. For some reason, with AD2P Sink, there is a 0.5s delay in playing music. The problem doesn’t exist with HSP, though the audio quality of HSP is considerably lower. I haven’t figured out how to fix the problem since I usually use a headset.</li>
-</ol>
-<p>Other than the issues mentioned above, everything works out of the box under Ubuntu 22.04, including all my external devices and all <code>Fn</code> hotkeys (except the one that disables touchpad).</p>
-<p>For the hardware side, IMO the model has only two minor design drawbacks: there are only two USB ports (and one of it is USB 2.0, seriously, why?); and the plastic hull seems relatively fragile and has many very thin parts, so I’m a bit concerned if the hull would break in an accident someday. The weight and the battery life are also not the best on the market, though they are definitely within reasonable range for a 17.3&quot; performance-oriented laptop, and also I’m not too concerned about them for my use case.</p>
-<p>Overall, I would recommend it as a great laptop at a great price for Ubuntu users.</p>
-<hr>
-<h4 id="Footnotes">Footnotes</h4>
-<hr class="footnotes-sep">
-<section class="footnotes">
-<ol class="footnotes-list">
-<li id="fn1" class="footnote-item"><p>CPU model, GPU model, screen size, screen resolution are all identical. The barebone doesn’t come with RAM or SSD, but the Dell $2650 model has the worst RAM and SSD that is sold at $30 on Amazon. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn2" class="footnote-item"><p>In fact, I would conjecture they tripled the price: given that R&amp;J is such a small business and how fast laptop hardware models get outdated, I guess the bulk bought-in price from Clevo is likely much less than $1000. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn3" class="footnote-item"><p>Of course, they also install Windows, but a Windows license not that expensive either, and also I don’t use Windows… <a href="#fnref3" class="footnote-backref">↩︎</a></p>
-</li>
-</ol>
-</section>
-<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
-      
-    </div>
-
-    
-      
-
-    
-
-    <footer class="article-footer">
-    <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl3wxw5kv000c8wnffq9dbq8k" class="article-share-link">
-        <i class="fa fa-share"></i> Share
-      </a>
-    -->
-      
-      
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
     <article id="post-2022-06-02" class="article article-type-post" itemscope itemprop="blogPost">
 
   <header class="article-header">
     
   
     <h1 itemprop="name">
-      <a class="article-title" href="2022/05/15/2022-06-02/">Understanding GC in JSC From Scratch</a>
+      <a class="article-title" href="2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
     </h1>
   
 
@@ -192,7 +113,7 @@
 
   <div class="article-meta">
     <div class="article-datetime">
-  <a href="2022/05/15/2022-06-02/" class="article-date"><time datetime="2022-05-15T00:00:00.000Z" itemprop="datePublished">2022-05-15</time></a>
+  <a href="2022/06/02/2022-06-02/" class="article-date"><time datetime="2022-06-02T00:00:00.000Z" itemprop="datePublished">2022-06-02</time></a>
 </div>
 
     
@@ -853,7 +774,86 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/15/2022-06-02/" data-id="cl3wxw5l1000d8wnf8a5egkcj" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl3wy11kt000d9cosc46a0wkh" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-2022-05-31" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="2022/05/31/2022-05-31/" class="article-date"><time datetime="2022-05-31T00:00:00.000Z" itemprop="datePublished">2022-05-31</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Recently I decided to get a new laptop to replace my 5-years-old one. I happened to discover something called “barebone laptop”, which are essentially laptops with no RAM or SSD installed and no brand logo painted.</p>
+<p>The barebone laptop manufacturers generally only provide bulk sale to OEM manufacturers. Since retail sale is not possible directly, there is a niche market for buying in barebone laptops in bulk and resell them to end customers, and there are small business who live on this niche, which is the easiest way for one to buy a barebone.</p>
+<p>Apart from being more environment-friendly (by reusing the RAM and SSD from the old laptop), the main advantage of a barebone is the price. My new <code>Clevo NP70PNP</code> bought from R&amp;J Tech (a barebone reseller business) is $1300, while a <code>Dell</code> laptop with the identical configuration<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> is sold at $2650. It’s surprising that Dell at least doubled the price<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup> by simply plugging in the RAM and SSD and painting their logo on top<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>, and their customers are still happily buying it.</p>
+<p>Anyway, let’s get back to the topic. My experience is that the <code>Clevo NP70PNP</code> can work very well with Ubuntu, though a few tweaks are needed. The hardest part is that it’s very hard to find the necessary tweaks in Google due to the unpopularity of barebone laptops, which is why I’m taking notes here.</p>
+<ol>
+<li>It has the Intel AX201 Wifi card, which doesn’t work in Ubuntu 20.04, and the reason is the kernel version, so not fixable by manually installing the firmware. However, Ubuntu 22.04 (just released last month) supports the Wifi card out of the box.</li>
+<li>The Ubuntu 22.04 live-USB black screens on regular boot, but can be fixed by selecting <code>safe graphics</code> at boot menu. It’s a pain – for whatever reason it takes 10 minutes to load the desktop, but fortunately this is only needed for live-USB install: after the install, the GPU driver and the graphics work fine.</li>
+<li>The touchpad (model <code>FTCS1000:01 2808:0102</code>) is the one that took me the longest to make work. It works initially, but would fail randomly after some time. After a lot of fruitless googling, it turns out that the GPU setting is the problem! (I seriously have no idea why.) As it turns out, the fix is to disable <code>MS Hybrid</code> for GPU. One can do this either in BIOS (in <code>Advanced Chip Settings</code>, switch the option from <code>MS Hybrid</code> to <code>Discrete GPU Only</code>), or in Ubuntu NVIDIA X Server Settings (in <code>PRIME settings</code> choose <code>Performance</code>).</li>
+<li>Even after the tweak, there are still some minor issues with touchpad. Specifically, the feature that automatically disables touchpad when external mouse is present or while typing does not work, since for some reason the touchpad cannot be disabled from <code>xinput</code>. However, for some reason, it can still be disabled in GNOME by bash command <code>gsettings set org.gnome.desktop.peripherals.touchpad send-events disabled</code>. So I wrote a <code>udev</code> rule to automatically disable the touchpad on external mouse plugging in and re-enable it when the external mouse is plugged out. Googling any <code>udev</code> rule tutorial should be sufficient. Automatically disabling touchpad on typing seems much harder.</li>
+<li>There are some minor issue with Bluetooth. For some reason, with AD2P Sink, there is a 0.5s delay in playing music. The problem doesn’t exist with HSP, though the audio quality of HSP is considerably lower. I haven’t figured out how to fix the problem since I usually use a headset.</li>
+</ol>
+<p>Other than the issues mentioned above, everything works out of the box under Ubuntu 22.04, including all my external devices and all <code>Fn</code> hotkeys (except the one that disables touchpad).</p>
+<p>For the hardware side, IMO the model has only two minor design drawbacks: there are only two USB ports (and one of it is USB 2.0, seriously, why?); and the plastic hull seems relatively fragile and has many very thin parts, so I’m a bit concerned if the hull would break in an accident someday. The weight and the battery life are also not the best on the market, though they are definitely within reasonable range for a 17.3&quot; performance-oriented laptop, and also I’m not too concerned about them for my use case.</p>
+<p>Overall, I would recommend it as a great laptop at a great price for Ubuntu users.</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>CPU model, GPU model, screen size, screen resolution are all identical. The barebone doesn’t come with RAM or SSD, but the Dell $2650 model has the worst RAM and SSD that is sold at $30 on Amazon. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>In fact, I would conjecture they tripled the price: given that R&amp;J is such a small business and how fast laptop hardware models get outdated, I guess the bulk bought-in price from Clevo is likely much less than $1000. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>Of course, they also install Windows, but a Windows license not that expensive either, and also I don’t use Windows… <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl3wy11km000c9cos2h2wdin9" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -978,7 +978,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl3wxw5kv000b8wnf86rh8274" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl3wy11kl000b9coshdbmhi5m" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1090,7 +1090,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl3wxw5ku000a8wnf11hw7cck" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl3wy11kk000a9cosgbpsd2nc" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1170,7 +1170,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl3wxw5ks00098wnf3rjwggve" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl3wy11kh00099cos77wh6d5q" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1255,7 +1255,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl3wxw5kr00088wnf3xae8a3s" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl3wy11kg00089cosce783ttd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1371,7 +1371,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl3wxw5kq00078wnf4ohq45tr" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl3wy11kf00079cosgaef15p4" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1481,7 +1481,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl3wxw5kp00068wnfaetac68h" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl3wy11ke00069cos5vvdgkzc" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1574,7 +1574,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl3wxw5ko00058wnf1vxce3xu" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl3wy11kc00059cos1lzh244w" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1652,7 +1652,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl3wxw5kn00048wnf32067n6h" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl3wy11ka00049cosg4m6c918" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1700,11 +1700,11 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
     <ul class="sidebar-module-list">
       
         <li>
-          <a href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+          <a href="2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
         </li>
       
         <li>
-          <a href="2022/05/15/2022-06-02/">Understanding GC in JSC From Scratch</a>
+          <a href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
         </li>
       
         <li>
