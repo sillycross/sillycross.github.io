@@ -285,13 +285,13 @@
 <p>A top business of <code>cellState</code> is to prevent adding an object into the remembered set if it is already there. Therefore, after we put the object into the remembered set, we will set its <code>cellState</code> to <code>white</code>, like shown below.</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrierSlowPath</span><span class="params">(JSCell* obj)</span> </span>&#123; </span><br><span class="line">  obj-&gt;cellState = white;</span><br><span class="line">  addToRememberedSet(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>Let’s prove why the above code works. Once we added an object to remembered set, we set it to <code>white</code>. We don’t need to add the same object into the remembered set until it gets popped out from the set by GC. But when GC pops out the object, it would set its <code>cellState</code> back to <code>black</code>, so we are good.</p>
-<p>However, JSC employs another optimization. During a full GC, we might see <code>black</code> objects that has <code>isMarked = false</code> (note that this is the only possible case that the object is unmarked, due to invariant 2). In this case, it’s unnecessary to add the object to remembered set, since the object will eventually be scanned in the future (or it becomes dead some time later before it was scanned, in which case we are good as well). Therefore, if the object is not marked, we can flip it back to <code>white</code> without adding it to remembered set. So the optimized version is as below:</p>
+<p>However, JSC employs another optimization. During a full GC, we might see <code>black</code> objects that has <code>isMarked = false</code> (note that this is the only possible case that the object is unmarked, due to invariant 2). In this case, it’s unnecessary to add the object to remembered set, since the object will eventually be scanned in the future (or it becomes dead some time later before it was scanned, in which case we are good as well). Therefore, if the object is not marked, we can flip it back to <code>white</code> without adding it to remembered set, so we don’t have to go into this slow path the next time a <code>WriteBarrier</code> on this object runs. To sum up, the optimized version is as below:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrierSlowPath</span><span class="params">(JSCell* obj)</span> </span>&#123; </span><br><span class="line">  <span class="keyword">if</span> (IsFullGcRunning()) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!isMarked(obj)) &#123;</span><br><span class="line">      obj-&gt;cellState = white;</span><br><span class="line">      <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    assert(isMarked(obj));    <span class="comment">// due to invariant 2</span></span><br><span class="line">  &#125;</span><br><span class="line">  obj-&gt;cellState = white;</span><br><span class="line">  addToRememberedSet(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <h3 id="Getting-Concurrent-and-Getting-Wild">Getting Concurrent and Getting Wild</h3>
 <p>At this point, we already have a very good incremental and generational garbage collector: the mutator, allocator and GC all have their respective fast-paths for the common cases, and with logical versioning, we avoided redundant work as much as possible. In my humble opinion, this is a good balance point between performance and engineering complexity.</p>
 <p>However, obviously, “engineering complexity” is not a word inside JSC’s dictionary: after all, they have the most talented engineers, to the point that they even <a href="https://webkit.org/blog/5852/introducing-the-b3-jit-compiler/" target="_blank" rel="noopener">engineered their own purpose-built LLVM from scratch</a>!</p>
 <p>To squeeze out every bit of performance, JSC proceeded to make the GC scheme concurrent. However, due to the nature of GC, it’s often infeasible to use locks to protect against race conditions for performance reasons, so extensive lock-free programming is employed.</p>
-<p>But once lock-free programming is involved, one starts to get into all sorts of architecture-dependent memory reordering problems. x86-64 is the more sane architecture: it only requires <code>StoreLoadFence()</code>, and it provides somewhat-TSO-like semantics, but JSC also needs ARM64 support for their Apple Sillicon devices. ARM64 has even fewer guarantees: load-load, load-store, store-load, and store-store can all be reordered by the CPU, so any innocent operation could actually need a fence. As if things were not bad enough, for performance reasons, JSC does not want to use too many memory fences on ARM64. So they have the so-called <code>Dependency</code> <a href="https://sillycross.github.io/r/WebKit/Source/WTF/wtf/Atomics.h.html#_ZN3WTF10DependencyC1Ev" target="_blank" rel="noopener">class</a>, which creates an implicit CPU data dependency on ARM64, so they can get the desired memory ordering for a specific data-flow without paying the cost of a memory fence. As you can imagine, with all of these complications and optimizations, the code can easily become horrifying.</p>
+<p>But once lock-free programming is involved, one starts to get into all sorts of architecture-dependent memory reordering problems. x86-64 is the more sane architecture: it only requires <code>StoreLoadFence()</code>, and it provides somewhat-TSO-like semantics, but JSC also needs ARM64 support for their Apple Sillicon devices. ARM64 has even fewer guarantees: load-load, load-store, store-load, and store-store can all be reordered by the CPU, so any innocent operation could actually need a fence. As if things were not bad enough, for performance reasons, JSC does not want to use too many memory fences on ARM64. So they have the so-called <code>Dependency</code> <a href="https://sillycross.github.io/r/WebKit/Source/WTF/wtf/Atomics.h.html#_ZN3WTF10DependencyC1Ev" target="_blank" rel="noopener">class</a>, which creates an implicit CPU data dependency on ARM64 through some scary assembly hacks, so they can get the desired memory ordering for a specific data-flow without paying the cost of a memory fence. As you can imagine, with all of these complications and optimizations, the code can easily become horrifying.</p>
 <p>So due to my limited expertise, it’s unsurprising if I missed to explain or mis-explained some important race conditions in the code, especially some ARM64-specific ones: if you spotted any issue in this post, please definitely let me know.</p>
 <p>Let’s go through the concurrency assumptions first. Javascript is a single-threaded language, so there is always only one mutator thread<sup class="footnote-ref"><a href="#fn22" id="fnref22">[22]</a></sup>. Apart from the mutator thread, JSC has a compilation thread, a GC thread, and a bunch of marking threads. Only the GC marking phase is concurrent: during which the mutator and a bunch of marking threads are concurrently running (yes, the marking itself is also done in parallel). However, all the other GC phases are run with the mutator thread and compilation thread stopped.</p>
 <h4 id="Some-Less-Interesting-Issues">Some Less Interesting Issues</h4>
@@ -705,7 +705,7 @@ Do some check to t2 and push it to queue<br>
 <p>I also mentioned that a <code>BlockDirectory</code> uses a free list to allocate from the currently active block <code>m_currentBlock</code>. It’s important to note that in the actual implementation of JSC, the cells in <code>m_currentBlock</code> does not respect the rule for <code>isNew</code> bit. Therefore, to check liveness, one either need to do a special-case check to see if the cell is from <code>m_currentBlock</code> (for example, see <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/HeapCell.cpp.html#_ZN3JSC8HeapCell6isLiveEv" target="_blank" rel="noopener">HeapCell::isLive</a>), or, for the GC<sup class="footnote-ref"><a href="#fn23" id="fnref23">[23]</a></sup>, stop the mutator, destroy the free list (and populate <code>isNew</code> in the process), do whatever inspection, then rebuild the free list and resume the mutator. The latter is implemented by <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlock.cpp.html#_ZN3JSC11MarkedBlock6Handle14stopAllocatingERKNS_8FreeListE" target="_blank" rel="noopener">two</a> <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlock.cpp.html#_ZN3JSC11MarkedBlock6Handle16resumeAllocatingERNS_8FreeListE" target="_blank" rel="noopener">functions</a> named <code>stopAllocating()</code> and <code>resumeAllocating()</code>, which are automatically called whenever the world is <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/Heap.cpp.html#_ZN3JSC4Heap16stopThePeripheryENS_11GCConductorE" target="_blank" rel="noopener">stopped</a> or <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/Heap.cpp.html#_ZN3JSC4Heap18resumeThePeripheryEv" target="_blank" rel="noopener">resumed</a>.</p>
 <p><a name="isNewAndAllocateBit"></a>The motivation of allowing <code>m_currentBlock</code> to not respect the rule for <code>isNew</code> is (a tiny bit of) performance. Instead of manually setting <code>isNew</code> to <code>true</code> for every allocation, a block-level bit <code>allocated</code> (aggregated as a bitvector in <code>BlockDirectory</code>) is used to indicate if a block is full of live objects. When the <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlock.cpp.html#_ZN3JSC11MarkedBlock6Handle18didConsumeFreeListEv" target="_blank" rel="noopener">free list becomes empty</a> (i.e., the block is fully allocated), we simply set <code>allocated</code> to <code>true</code> for this block. When querying cell liveness, we <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlockInlines.h.html#101" target="_blank" rel="noopener">check this bit first</a> and directly return true if it is set. The <code>allocated</code> bitvector is <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/BlockDirectory.cpp.html#252" target="_blank" rel="noopener">cleared at the end of each GC cycle</a>, and since the global logical version for <code>isNew</code> is also bumped, this effectively clears all the <code>isNew</code> bits, just as we desired.</p>
 <p>JSC’s design also support the so-called <em>constraint solver</em>, which allows specification of implicit reference edges (i.e., edge not represented as pointer in the object). This is mainly used to support Javascript interaction with DOM. This part is not covered in this post.</p>
-<p>Weak reference has multiple implementations in JSC. The general (but less efficient) implementation is <code>WeakImpl</code>, denoting a weak reference edge. The data structure managing them is <code>WeakSet</code>, and you can see it in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlock.h.html#JSC::MarkedBlock::Handle::m_weakSet" target="_blank" rel="noopener">every block footer</a>, and in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation::m_weakSet" target="_blank" rel="noopener">every PreciseAllocation GC header</a>. However, JSC also employes more efficient specialized implementations to handle the weak map feature in Javascript. The details are not covered in this post.</p>
+<p>Weak reference has multiple implementations in JSC. The general (but less efficient) implementation is <code>WeakImpl</code>, denoting a weak reference edge. The data structure managing them is <code>WeakSet</code>, and you can see it in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/MarkedBlock.h.html#JSC::MarkedBlock::Handle::m_weakSet" target="_blank" rel="noopener">every block footer</a>, and in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation::m_weakSet" target="_blank" rel="noopener">every PreciseAllocation GC header</a>. However, JSC also employs more efficient specialized implementations to handle the weak map feature in Javascript. The details are not covered in this post.</p>
 <p>In JSC, objects may also have destructors. However, one can easily imagine some scheme to run the destructors of the cells containing dead objects when the <code>BlockDirectory</code> allocator starts allocating in a block. One extra complexity is that destructors will not be run if the block containing it is never allocated from again, so there is a <code>lastChanceToFinalize()</code> function in JSC, which is called on VM shutdown, to ensure that all destructors are run at that time. The details are not covered in this post.</p>
 <p>JSC employs a conservative approach for pointers on the stack and in registers: the GC uses UNIX signals to suspend the mutator thread, so it can copy its stack contents and CPU register values to search for data that looks like pointers. However, it’s important to note that UNIX signal is <strong>not</strong> used to suspend the execution of the mutator: the mutator always <strong>actively</strong> suspends itself at a safe point. This is critical, as otherwise it could be suspended at weird places, for example, in a <code>HeapCell::isLive</code> check after it has read <code>isNew</code> but before it has read <code>isMarked</code>, and then GC did <code>isNew |= isMarked, isMarked = false</code>, and boom. So it seems like the only reason to suspend the thread is for the GC to get the CPU register values, including the <code>SP</code> register value so the GC knows where the stack ends. It’s unclear to me if it’s possible to do so in a cooperative manner instead of using costly UNIX signals.</p>
 <h3 id="Acknowledgements">Acknowledgements</h3>
@@ -735,7 +735,7 @@ Do some check to t2 and push it to queue<br>
 </li>
 <li id="fn10" class="footnote-item"><p>Memory of an <code>IsoSubspace</code> is only used by this <code>IsoSubspace</code>, never stolen by other allocators. As a result, a memory address in <code>IsoSubspace</code> can only be reused to allocate objects of the same type. So for any type <code>A</code> allocated by <code>IsoSubspace</code>, even if there is a use-after-free bug on type <code>A</code>, it is impossible to allocate <code>A</code>, free it, allocate type <code>B</code> at the same address, and exploit the bug to trick the VM into interpreting an integer field in <code>B</code> controlled by attacker as a pointer field in <code>A</code>. <a href="#fnref10" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn11" class="footnote-item"><p>In some GC schemes, an eden object is required to survive two (instead of one) eden GC to be considered in old space. The purpose of such design is to make sure that any old space object is at least one eden-GC-gap old. In contrast, in JSC’s design, an object created immediately before an eden collection will be moved to old space immediately, which then can only be reclaimed via a full GC. The performance difference between the two designs is unclear to me. I conjecture JSC chose its current design because it’s easier to make concurrent. <a href="#fnref11" class="footnote-backref">↩︎</a></p>
+<li id="fn11" class="footnote-item"><p>In some GC schemes, an eden object is required to survive two (instead of one) eden GC to be considered in old space. The purpose of such design is to make sure that any old space object is at least one eden-GC-gap old. In contrast, in JSC’s design, an object created immediately before an eden collection will be considered to be in old space immediately, which then can only be reclaimed via a full GC. The performance difference between the two designs is unclear to me. I conjecture JSC chose its current design because it’s easier to make concurrent. <a href="#fnref11" class="footnote-backref">↩︎</a></p>
 </li>
 <li id="fn12" class="footnote-item"><p>There is one additional color <code>Grey</code> in <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/CellState.h.html#JSC::CellState" target="_blank" rel="noopener">the code</a>. However, it turns out that <code>White</code> and <code>Grey</code> makes no difference (you can verify it by grepping all use of <code>cellState</code> and observe that the only comparison on <code>cellState</code> is checking if it is <code>Black</code>). The comments explaining what the colors mean are also a bit outdated. This is likely a historical artifact. In my opinion JSC should really clean it up and update the comment, as it can easily cause confusion to readers who intend to understand the design. <a href="#fnref12" class="footnote-backref">↩︎</a></p>
 </li>
@@ -757,7 +757,7 @@ Do some check to t2 and push it to queue<br>
 </li>
 <li id="fn21" class="footnote-item"><p>Note that any number of eden GC cycles may have run between the last full GC cycle and the current GC cycle. However, since eden GC does not bump mark version, the <code>isMarked</code> bit still honestly reflect if an object is live no matter when the object is born. <a href="#fnref21" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn22" class="footnote-item"><p>The real story is a bit more complicated. JSC actually reuse the same VM for different Javascript scripts. However, at any moment, at most of the script can be running. So technically, there are multiple mutually-exclusive mutator threads, but this doesn’t affect our GC story. <a href="#fnref22" class="footnote-backref">↩︎</a></p>
+<li id="fn22" class="footnote-item"><p>The real story is a bit more complicated. JSC actually reuse the same VM for different Javascript scripts. However, at any moment, at most one of the script can be running. So technically, there are multiple mutually-exclusive mutator threads, but this doesn’t affect our GC story. <a href="#fnref22" class="footnote-backref">↩︎</a></p>
 </li>
 <li id="fn23" class="footnote-item"><p>The GC needs to inspect a lot of cells, and its logic is already complex enough, so having one less special-case branch is probably beneficial for both engineering and performance. <a href="#fnref23" class="footnote-backref">↩︎</a></p>
 </li>
@@ -774,7 +774,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl3wy11kt000d9cosc46a0wkh" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl3xlwm3u000dbin24ys6epdc" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -853,7 +853,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl3wy11km000c9cos2h2wdin9" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl3xlwm3p000cbin2aplkffqo" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -978,7 +978,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl3wy11kl000b9coshdbmhi5m" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl3xlwm3o000bbin208b1bnnk" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1090,7 +1090,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl3wy11kk000a9cosgbpsd2nc" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl3xlwm3n000abin27u4d8m98" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1170,7 +1170,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl3wy11kh00099cos77wh6d5q" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl3xlwm3l0009bin24165bklv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1255,7 +1255,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl3wy11kg00089cosce783ttd" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl3xlwm3l0008bin2atuv4qqr" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1371,7 +1371,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl3wy11kf00079cosgaef15p4" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl3xlwm3k0007bin21ze2em3x" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1481,7 +1481,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl3wy11ke00069cos5vvdgkzc" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl3xlwm3j0006bin25ckw56uo" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1574,7 +1574,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl3wy11kc00059cos1lzh244w" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl3xlwm3i0005bin2g7f49ym3" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1652,7 +1652,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl3wy11ka00049cosg4m6c918" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl3xlwm3g0004bin253tkdsop" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
