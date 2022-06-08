@@ -285,7 +285,7 @@
 <p>A top business of <code>cellState</code> is to prevent adding an object into the remembered set if it is already there. Therefore, after we put the object into the remembered set, we will set its <code>cellState</code> to <code>white</code>, like shown below.</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrierSlowPath</span><span class="params">(JSCell* obj)</span> </span>&#123; </span><br><span class="line">  obj-&gt;cellState = white;</span><br><span class="line">  addToRememberedSet(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>Let’s prove why the above code works. Once we added an object to remembered set, we set it to <code>white</code>. We don’t need to add the same object into the remembered set until it gets popped out from the set by GC. But when GC pops out the object, it would set its <code>cellState</code> back to <code>black</code>, so we are good.</p>
-<p>However, JSC employs another optimization. During a full GC, we might see <code>black</code> objects that has <code>isMarked = false</code> (note that this is the only possible case that the object is unmarked, due to invariant 2). In this case, it’s unnecessary to add the object to remembered set, since the object will eventually be scanned in the future (or it becomes dead some time later before it was scanned, in which case we are good as well). In addition, we will flip it back to <code>white</code>, so we don’t have to go into this slow path the next time a <code>WriteBarrier</code> on this object runs. To sum up, the optimized version is as below:</p>
+<p>However, JSC employs another optimization. During a full GC, we might see <code>black</code> objects that has <code>isMarked = false</code> (note that this is the only possible case that the object is unmarked, due to invariant 2). In this case, it’s unnecessary to add the object to remembered set, since the object will eventually be scanned in the future (or it becomes dead some time later before it was scanned, in which case we are good as well). Furthermore, we can flip it back to <code>white</code>, so we don’t have to go into this slow path the next time a <code>WriteBarrier</code> on this object runs. To sum up, the optimized version is as below:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrierSlowPath</span><span class="params">(JSCell* obj)</span> </span>&#123; </span><br><span class="line">  <span class="keyword">if</span> (IsFullGcRunning()) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!isMarked(obj)) &#123;</span><br><span class="line">      <span class="comment">// Do not add the object to remembered set</span></span><br><span class="line">      <span class="comment">// In addition, set cellState to white so this </span></span><br><span class="line">      <span class="comment">// slow path is not triggered on the next run</span></span><br><span class="line">      obj-&gt;cellState = white;</span><br><span class="line">      <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    assert(isMarked(obj));    <span class="comment">// due to invariant 2</span></span><br><span class="line">  &#125;</span><br><span class="line">  obj-&gt;cellState = white;</span><br><span class="line">  addToRememberedSet(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <h3 id="Getting-Concurrent-and-Getting-Wild">Getting Concurrent and Getting Wild</h3>
 <p>At this point, we already have a very good incremental and generational garbage collector: the mutator, allocator and GC all have their respective fast-paths for the common cases, and with logical versioning, we avoided redundant work as much as possible. In my humble opinion, this is a good balance point between performance and engineering complexity.</p>
@@ -775,7 +775,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl3ziaegq000de4on7qzq686o" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl45k7q4b000dawp01kvo4n3u" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -826,6 +826,7 @@ Do some check to t2 and push it to queue<br>
 <li>The touchpad (model <code>FTCS1000:01 2808:0102</code>) is the one that took me the longest to make work. It works initially, but would fail randomly after some time. After a lot of fruitless googling, it turns out that the GPU setting is the problem! (I seriously have no idea why.) As it turns out, the fix is to disable <code>MS Hybrid</code> for GPU. One can do this either in BIOS (in <code>Advanced Chip Settings</code>, switch the option from <code>MS Hybrid</code> to <code>Discrete GPU Only</code>), or in Ubuntu NVIDIA X Server Settings (in <code>PRIME settings</code> choose <code>Performance</code>).</li>
 <li>Even after the tweak, there are still some minor issues with touchpad. Specifically, the feature that automatically disables touchpad when external mouse is present or while typing does not work, since for some reason the touchpad cannot be disabled from <code>xinput</code>. However, for some reason, it can still be disabled in GNOME by bash command <code>gsettings set org.gnome.desktop.peripherals.touchpad send-events disabled</code>. So I wrote a <code>udev</code> rule to automatically disable the touchpad on external mouse plugging in and re-enable it when the external mouse is plugged out. Googling any <code>udev</code> rule tutorial should be sufficient. Automatically disabling touchpad on typing seems much harder.</li>
 <li>There are some minor issue with Bluetooth. For some reason, with AD2P Sink, there is a 0.5s delay in playing music. The problem doesn’t exist with HSP, though the audio quality of HSP is considerably lower. I haven’t figured out how to fix the problem since I usually use a headset.</li>
+<li>For some reason, whenever the GPU is under load, the fan would spin at max speed (even if the GPU temperature is only 40 C or so), and the noise is a bit too loud. And it seems like neither the NVIDIA GPU driver nor <code>fancontrol</code> could even detect the fan, not to mention controlling it, though I haven’t dig into this issue too deep either, since it’s not too problematic for my use case.</li>
 </ol>
 <p>Other than the issues mentioned above, everything works out of the box under Ubuntu 22.04, including all my external devices and all <code>Fn</code> hotkeys (except the one that disables touchpad).</p>
 <p>For the hardware side, IMO the model has only two minor design drawbacks: there are only two USB ports (and one of it is USB 2.0, seriously, why?); and the plastic hull seems relatively fragile and has many very thin parts, so I’m a bit concerned if the hull would break in an accident someday. The weight and the battery life are also not the best on the market, though they are definitely within reasonable range for a 17.3&quot; performance-oriented laptop, and also I’m not too concerned about them for my use case.</p>
@@ -854,7 +855,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl3ziaegl000ce4on9nqr0p5b" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl45k7q47000cawp07odk9x46" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -979,7 +980,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl3ziaegk000be4onggstctxo" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl45k7q46000bawp0g4mx3f9a" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1091,7 +1092,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl3ziaegj000ae4on4gu6b8b8" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl45k7q44000aawp031ym9wxh" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1171,7 +1172,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl3ziaegi0009e4onbtp15cqw" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl45k7q440009awp01b1j6vi7" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1256,7 +1257,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl3ziaegh0008e4on135zce4e" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl45k7q430008awp0g3o1aftj" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1372,7 +1373,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl3ziaegg0007e4on81u80wau" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl45k7q410007awp03oob5632" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1482,7 +1483,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl3ziaegf0006e4ondzvh2fnd" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl45k7q400006awp036xl4y0h" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1575,7 +1576,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl3ziaegd0005e4onbfde9nz6" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl45k7q3z0005awp087t51ut4" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1653,7 +1654,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/08/23/2021-08-23/" data-id="cl3ziaegb0004e4on74258cpt" class="article-share-link">
+      <a data-url="2021/08/23/2021-08-23/" data-id="cl45k7q3y0004awp045p1hxqj" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->

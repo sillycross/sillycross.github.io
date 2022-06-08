@@ -13,7 +13,7 @@
 <meta property="og:description" content="Recently I decided to get a new laptop to replace my 5-years-old one. I happened to discover something called “barebone laptop”, which are essentially laptops with no RAM or SSD installed and no brand">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-05-31T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-06-04T06:40:22.865Z">
+<meta property="article:modified_time" content="2022-06-08T12:20:53.384Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -136,6 +136,7 @@
 <li>The touchpad (model <code>FTCS1000:01 2808:0102</code>) is the one that took me the longest to make work. It works initially, but would fail randomly after some time. After a lot of fruitless googling, it turns out that the GPU setting is the problem! (I seriously have no idea why.) As it turns out, the fix is to disable <code>MS Hybrid</code> for GPU. One can do this either in BIOS (in <code>Advanced Chip Settings</code>, switch the option from <code>MS Hybrid</code> to <code>Discrete GPU Only</code>), or in Ubuntu NVIDIA X Server Settings (in <code>PRIME settings</code> choose <code>Performance</code>).</li>
 <li>Even after the tweak, there are still some minor issues with touchpad. Specifically, the feature that automatically disables touchpad when external mouse is present or while typing does not work, since for some reason the touchpad cannot be disabled from <code>xinput</code>. However, for some reason, it can still be disabled in GNOME by bash command <code>gsettings set org.gnome.desktop.peripherals.touchpad send-events disabled</code>. So I wrote a <code>udev</code> rule to automatically disable the touchpad on external mouse plugging in and re-enable it when the external mouse is plugged out. Googling any <code>udev</code> rule tutorial should be sufficient. Automatically disabling touchpad on typing seems much harder.</li>
 <li>There are some minor issue with Bluetooth. For some reason, with AD2P Sink, there is a 0.5s delay in playing music. The problem doesn’t exist with HSP, though the audio quality of HSP is considerably lower. I haven’t figured out how to fix the problem since I usually use a headset.</li>
+<li>For some reason, whenever the GPU is under load, the fan would spin at max speed (even if the GPU temperature is only 40 C or so), and the noise is a bit too loud. And it seems like neither the NVIDIA GPU driver nor <code>fancontrol</code> could even detect the fan, not to mention controlling it, though I haven’t dig into this issue too deep either, since it’s not too problematic for my use case.</li>
 </ol>
 <p>Other than the issues mentioned above, everything works out of the box under Ubuntu 22.04, including all my external devices and all <code>Fn</code> hotkeys (except the one that disables touchpad).</p>
 <p>For the hardware side, IMO the model has only two minor design drawbacks: there are only two USB ports (and one of it is USB 2.0, seriously, why?); and the plastic hull seems relatively fragile and has many very thin parts, so I’m a bit concerned if the hull would break in an accident someday. The weight and the battery life are also not the best on the market, though they are definitely within reasonable range for a 17.3&quot; performance-oriented laptop, and also I’m not too concerned about them for my use case.</p>
@@ -164,7 +165,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl3ziaegl000ce4on9nqr0p5b" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl45k7q47000cawp07odk9x46" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
