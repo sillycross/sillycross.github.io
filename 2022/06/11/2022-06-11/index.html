@@ -20,7 +20,7 @@
 <meta property="og:image" content="/images/2022-06-11/P-Core-2.png">
 <meta property="og:image" content="/images/2022-06-11/E-Core.png">
 <meta property="article:published_time" content="2022-06-11T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-06-12T11:01:47.168Z">
+<meta property="article:modified_time" content="2022-06-12T11:02:27.772Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="/images/2022-06-11/P-Core-3.png">
@@ -135,7 +135,7 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it.</p>
-<p>As a performance engineer, it’s routine to evaluate the performance before and after a code commit. This is why I’ve been faintly feeling that something is unusual about my new Alder Lake i7-12700H laptop CPU.</p>
+<p>As a performance engineer, it’s routine to evaluate the performance before and after a code commit. This is why I’ve been faintly feeling that something is unusual about my new Intel Alder Lake i7-12700H laptop CPU.</p>
 <p>Today I dug into the problem. As I discovered, this CPU indeed exhibits some highly unusual and surprising performance characteristics, which can easily cause pitfalls for benchmarks.</p>
 <p>For background, Alder Lake features a <em>hybrid architecture</em> of the powerful P-cores and the weaker E-cores. i7-12700H has 6 P-cores and 8 E-cores. Of course, we want to have the P-cores run our time-sensitive tasks, such as our benchmarks. This can be done easily by <code>taskset</code> the process to only P-cores.</p>
 <p>This is where the story begins. I noticed two problems with the P-cores:</p>
@@ -214,7 +214,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4b75faw000d9gn3053mfqfb" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4b76aoq000d9ooyapk9ee9d" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
