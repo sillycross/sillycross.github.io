@@ -852,6 +852,20 @@ visibility: visible;
   padding-left: 0;
   list-style: none;
 }
+.sidebar-module-list-recent-posts {
+  padding-left: 0;
+  list-style: none;
+}
+.sidebar-module-list-recent-posts > li {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-color: rgb(238, 238, 238);
+  padding-bottom: 5px;
+  padding-top: 5px;
+}
+.sidebar-module-list-recent-posts >*:last-child {
+  border-bottom-style: none;
+}
 .sidebar-module-list-child {
   padding-left: 25px;
 }
@@ -899,7 +913,9 @@ visibility: visible;
 .article-entry>*:last-child {
   margin-bottom: 15px;
 }
-
+.article-title {
+  font-size: 32px;
+}
 /* article footer content */
 .article-footer {
   font-size: 0.85em;

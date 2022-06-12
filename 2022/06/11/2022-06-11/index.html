@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Bizarre Performance Characteristics of Alder Lake CPU | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. As a performance engineer, it’s routine to eval">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Bizarre Performance Characteristics of Alder Lake CPU">
+<meta property="og:url" content="2022/06/11/2022-06-11/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. As a performance engineer, it’s routine to eval">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="/images/2022-06-11/P-Core-3.png">
+<meta property="og:image" content="/images/2022-06-11/P-Core-1.png">
+<meta property="og:image" content="/images/2022-06-11/P-Core-5.png">
+<meta property="og:image" content="/images/2022-06-11/P-Core-0.png">
+<meta property="og:image" content="/images/2022-06-11/P-Core-4.png">
+<meta property="og:image" content="/images/2022-06-11/P-Core-2.png">
+<meta property="og:image" content="/images/2022-06-11/E-Core.png">
+<meta property="article:published_time" content="2022-06-11T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-12T09:51:53.833Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/2022-06-11/P-Core-3.png">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2022-06-11" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Bizarre Performance Characteristics of Alder Lake CPU
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-06-11T00:00:00.000Z" itemprop="datePublished">2022-06-11</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it.</p>
+<p>As a performance engineer, it’s routine to evaluate the performance before and after a code commit. I recently bought a laptop with Intel’s latest Alder Lake generation i7-12700H CPU. But since then, I’ve been faintly feeling that something is unusual about its performance.</p>
+<p>Today I dug into the problem. As I discovered, this CPU indeed exhibits some highly unusual and surprising performance characteristics, which can easily cause pitfalls for benchmarks.</p>
+<p>For background, Alder Lake features a <em>hybrid architecture</em> of the powerful P-cores and the weaker E-cores. i7-12700H has 6 P-cores and 8 E-cores. Of course, we want to have the P-cores run our time-sensitive tasks, such as our benchmarks. This can be done easily by <code>taskset</code> the process to only P-cores.</p>
+<p>This is where the story begins. I noticed two problems with the P-cores:</p>
+<ol>
+<li>Sometimes it cannot turbo-boost to 4.7GHz, the <a href="https://ark.intel.com/content/www/us/en/ark/products/132228/intel-core-i712700h-processor-24m-cache-up-to-4-70-ghz.html" target="_blank" rel="noopener">Intel-specified</a> max turbo boost frequency (for the one-active-core case) for i7-12700H.</li>
+<li>Sometimes it cannot stay at the highest CPU frequency it can boost to.</li>
+</ol>
+<p>Point 1 implies that we cannot enjoy the full performance promoted by Intel. Point 2 implies that the core cannot deliver <em>consistent</em> performance, which is problematic for performance engineering, as the noise would make two benchmark runs less comparable.</p>
+<h3 id="Test-Setup">Test Setup</h3>
+<p>To expose the problem, I wrote a dumb program that increments a variable in a dead loop, so that the frequency of the CPU running the program is maxed out. Then I use <code>taskset</code> to pin the program to one CPU, have it run for 60 seconds, and run <code>cpufreq</code> every second to record the frequency of that CPU in the duration<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>.</p>
+<p>I took the following precautions to ensure nothing outside the CPU chip is limiting the CPU from boosting to its max frequency:</p>
+<ol>
+<li>Use <code>isolcpus</code> Linux kernel boot parameter to exclusively dedicate the tested CPU core to our test program. This removes any noise caused by the OS.</li>
+<li>Confirm the CPU is not throttled by power limit: with only one active core (running our test program), the CPU package power consumption is less than <code>25W</code>, far less than the base <code>45W</code> TDP of i7-12700H.</li>
+<li>Confirm the CPU is not temperature-throttled (by monitoring sensors). To be paranoid, I also set a <code>20s</code> gap between each test so the temperature goes back to idle state.</li>
+<li>Confirm the machine is in idle state, and stop unnecessary background services.</li>
+<li>The CPU <a href="https://wiki.archlinux.org/title/CPU_frequency_scaling#Scaling_governors" target="_blank" rel="noopener">frequency governer</a> is set to <code>performance</code>, and I confirmed that the governer is not limiting the turbo boost frequency.</li>
+<li>Everything is at stock setting: nothing is overclocked or undervolted, etc.</li>
+<li>All tests are repeated 3 times, and consistent behavior is observed for every core.</li>
+</ol>
+<h3 id="Not-All-P-cores-Are-Born-Equal">Not All P-cores Are Born Equal</h3>
+<p>The test confirmed my hypothesis that the 6 P-cores in my i7-12700H do not have a uniform quality. Specifically, my 6 P-cores exhibit three different performance characteriscs!</p>
+<p>I dubbed them as “gold core”, “B-grade core”, and “wild core”:</p>
+<ol>
+<li>Gold core: the core can boost to and stay at 4.7GHz, just as Intel claimed.</li>
+<li>B-grade core: the core can boost to and stay at a frequency lower than 4.7GHz.</li>
+<li>Wild core: the core cannot boost to 4.7GHz, and cannot stay at any stable frequency: it will fluctuate wildly between a range of frequencies, and the degree of turbulence also varies per core.</li>
+</ol>
+<p>We will explain their performance characteristics below.</p>
+<h3 id="The-“Wild-Cores”">The “Wild Cores”</h3>
+<p>Let’s start with the most bizarre cores: the wild ones. As it turns out, 3 out of my 6 P-cores are wild (a whopping 50%!), and among those three cores, one of them is particularly wild, as shown in the plot below<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>:</p>
+<p><img src="/images/2022-06-11/P-Core-3.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
+<p>As you can see, the CPU frequency turbulents violently from 4.05GHz to 4.55GHz, and each run exhibits a completely different pattern. Clearly, if any benchmark were run on this core, such a large noise would make the benchmark result nearly useless.</p>
+<p>The other two wild cores I got were less turbulent. Even though, the noise introduced by the frequency instability still likely make them infeasible for benchmark comparison:</p>
+<p><img src="/images/2022-06-11/P-Core-1.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"><br>
+<img src="/images/2022-06-11/P-Core-5.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
+<h3 id="The-“B-grade-Cores”">The “B-grade Cores”</h3>
+<p>The B-grade cores (as I dubbed) are better: while they cannot boost to 4.7GHz as promoted by Intel, at least they can operate at a consistent frequency, so benchmark results are comparable as long as they are run on the same core.</p>
+<p>It turns out that my i7-12700H has two B-grade cores, both capable of operating at 4.5GHz:</p>
+<p><img src="/images/2022-06-11/P-Core-0.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"><br>
+<img src="/images/2022-06-11/P-Core-4.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
+<p>As one can see, the core for the second graph has slightly higher frequency variations. Nevertheless, they are much stabler than the three wild cores.</p>
+<h3 id="The-“Gold-Core”">The “Gold Core”</h3>
+<p>Only 1 out of the 6 P-cores of my i7-12700H matches Intel’s marketing<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>:</p>
+<p><img src="/images/2022-06-11/P-Core-2.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
+<p>As one can see, it operates stably at about 4.68GHz, just as Intel claimed.</p>
+<h3 id="The-Behavior-of-the-E-cores">The Behavior of the E-cores</h3>
+<p>Unlike the P-cores, it turns out that the E-cores have extremely stable behavior. All the eight E-cores can boost to and stay at 3.5GHz, just as the Intel specification said. There is not even a single outlier point: as you can see in the figure, it’s a completely straight line.</p>
+<p><img src="/images/2022-06-11/E-Core.png" alt="All E-cores can stay perfectly at 3.5GHz, as they are supposed to"></p>
+<h3 id="Conclusion-Thoughts">Conclusion Thoughts</h3>
+<p>Given Intel’s tight testing and binning quality-control process, it seems very unlikely that I’m seeing all of these only because I got a defective. So I conjecture the “wild core” behavior can likely be observed on many i7-12700H CPUs.</p>
+<p>Additionally, since i7-12700H is just the same i9-12900 chip with two below-quality P-cores disabled, it is also interesting to know if the behavior shows up on higher-end Alder Lake models, like the i9-12900K, as those presumably come from the better silicons, but I don’t have the ability to validate it.</p>
+<p>Nevertheless, from a practicalist’s perspective, the action to take is clear: run the benchmark to identify the best cores and the performance-unstable cores on your chip, avoid running benchmarks on the performance-unstable cores, and use the best cores for the most latency-sensitive application.</p>
+<p>For example, for my particular chip, physical core 2 (logical core 4-5) turns out to be the only “gold core”, so <code>taskset -c 4</code> for single-threaded benchmark is a good idea. Similarly, for latency-sensitive multi-threaded application (like the <code>QtCreator</code> IDE, where UX is heavily affected by auto-completion latency), it is reasonable to modify the startup command in the desktop link to pin it to the good cores (logical core <code>0,1,4,5,8,9</code> in my particular chip).</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>The full bash script for the test can be found <a href="https://sillycross.github.io/assets/2022-06-11/i7_12700h_cpu_test.txt" target="_blank" rel="noopener">here</a>. For least noise, you should use <code>isolcpus</code> boot parameter to isolate a subset of CPUs, reboot, modify the script to only test the isolated subset, then change <code>isolcpus</code> to isolate the opposite set of CPUs, reboot, and modify the script to test the opposite set. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>The two logical CPUs of the physical core exhibit the same behavior, so I only show one of them. Same for other figures in this post. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>Though if you take a closer look at their specification, you’ll see what Intel claimed is “up to 4.7GHz”, so technically they did not lie, as they never claimed all cores can meet their specification – though, I guess, two cores 0.2GHz slower, two cores 0.35GHz slower and turbulent, one core 0.5GHz slower and highly turbulent is still, hmm. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4b4nic8000damn60a2y9pys" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../02/2022-06-02/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Understanding GC in JSC From Scratch</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">6</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="">Bizarre Performance Characteristics of Alder Lake CPU</a>
+        </li>
+      
+        <li>
+          <a href="../../02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+        </li>
+      
+        <li>
+          <a href="../../../05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+        </li>
+      
+        <li>
+          <a href="../../../04/30/2022-04-30/">The Watchpoint Mechanism in JSC</a>
+        </li>
+      
+        <li>
+          <a href="../../../04/26/2022-04-26/">Note on x86-64 Memory Model</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

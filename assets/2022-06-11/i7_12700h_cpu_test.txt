@@ -1,0 +1,16 @@
+#!/bin/bash
+echo 'int main() { unsigned long long i = 0; while (true) { i++; } }' > test_alder_lake_i7_12700h.cpp
+g++ test_alder_lake_i7_12700h.cpp
+for ((i = 0; i < 20; i++))
+do
+	echo "Testing CPU $i"
+	timeout 60 taskset -c $i ./a.out &
+	sleep 1
+	for ((t = 0; t < 58; t++))
+	do
+		cpufreq-info -c $i | grep 'current CPU frequency is'
+		sleep 1
+	done
+	sleep 20
+done
+
