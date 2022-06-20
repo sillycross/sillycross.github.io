@@ -204,7 +204,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4lzpfes000db9p43d6ocri8" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4lzx2nh000daooi3znk5qkx" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -390,7 +390,7 @@
 <p>Let’s look at our new <code>WriteBarrier</code>:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Executed after writing a pointer to 'dst' into a field of 'obj'</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrier</span><span class="params">(JSCell* obj)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (obj-&gt;cellState == black) </span><br><span class="line">    WriteBarrierSlowPath(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>The first thing to notice is that the <code>WriteBarrier</code> is no longer checking if <code>dst</code> (the object that the pointer points to) is marked or not. Clearly this does not affect the correctness: we are just making the criteria less restrictive. However, it is unclear to me if we can improve performance while maintaining correctness by making some kind of check on <code>dst</code> as well, like the original <code>WriteBarrier</code> did.</p>
-<p>I wasn’t able to get a definite answer on this even from JSC developer (the original writer of this code has left the company). Their <em>conjecture</em> is the following: by not checking <code>dst</code>, more objects are put into the remembered set and need to be scanned by GC, so the total amount of work increased. However, the mutator’s work probably decreased, as it does less checks and touches less cache lines (by not touching the outlined <code>isMarked</code> bit). Of course, the benefit is offsetted by that more objects are added into the remembered set, but this isn’t too expensive either, as the remembered set is only a segmented vector. GC has to do more work, as it needs to scan and mark more objects. However, after we make our scheme concurrent, the marking phase of GC can be done concurrently as the mutator is running, so the latency is probably<sup class="footnote-ref"><a href="#fn22" id="fnref22">[22]</a></sup> hidden. But any way, this is how JSC works, so let’s stick to it.</p>
+<p>I wasn’t able to get a definite answer on this even from JSC developer (the original writer of this code has left the company). Their <em>conjecture</em> is the following: by not checking <code>dst</code>, more objects are put into the remembered set and need to be scanned by GC, so the total amount of work increased. However, the mutator’s work probably decreased, as it does less checks and touches less cache lines (by not touching the outlined <code>isMarked</code> bit). Of course, the benefit is offsetted by that the mutator is adding more objects into the remembered set, but this isn’t too expensive either, as the remembered set is only a segmented vector. GC has to do more work, as it needs to scan and mark more objects. However, after we make our scheme concurrent, the marking phase of GC can be done concurrently as the mutator is running, so the latency is probably<sup class="footnote-ref"><a href="#fn22" id="fnref22">[22]</a></sup> hidden. But any way, this is how JSC works, so let’s stick to it.</p>
 <p>The interesting part is how the invariants above are maintained by the relavent parties. As always, there are three actors: the mutator (<code>WriteBarrier</code>), the allocator, and the GC.</p>
 <p>The interaction with the allocator is the simplest. All objects are born <code>white</code>. This is correct because newly-born objects are not marked, so have no reason to be remembered.</p>
 <p>The interaction with GC is during the GC marking phase:</p>
@@ -901,7 +901,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzpff4000eb9p403gfgx51" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzx2np000eaooi4ho013mi" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -981,7 +981,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl4lzpfer000cb9p498j19czt" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl4lzx2ng000caooi59my8fx2" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1106,7 +1106,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl4lzpfeq000bb9p43878c0kz" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl4lzx2nf000baooi36sc6l94" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1218,7 +1218,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl4lzpfep000ab9p4ezyjeyaa" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl4lzx2ne000aaooi3dwy91l8" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1298,7 +1298,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl4lzpfen0009b9p4h6cbhxi6" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl4lzx2nd0009aooib3is93u8" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1383,7 +1383,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl4lzpfel0008b9p4cnaqb9ng" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl4lzx2nc0008aooi3tzgcfzs" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1499,7 +1499,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl4lzpfek0007b9p47fjrepx5" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl4lzx2nb0007aooi77yp6bi3" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1609,7 +1609,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl4lzpfej0006b9p4hu8b03vj" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl4lzx2na0006aooic563044k" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1702,7 +1702,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl4lzpfeh0005b9p49b5a5e41" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl4lzx2n90005aooi0roi5h1i" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
