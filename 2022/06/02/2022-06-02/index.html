@@ -13,7 +13,7 @@
 <meta property="og:description" content="Javascript relies on the garbage collector (GC) to reclaim memory. In this post, we will dig a little bit into JSC (the Javascript engine of WebKit)&#39;s garbage collection system. WebKit’s blog post on">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-06-02T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-06-20T00:09:41.905Z">
+<meta property="article:modified_time" content="2022-06-20T00:18:48.830Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -195,7 +195,7 @@
 <p>For <code>PreciseAllocation</code>, the actual memory management work is done by <code>malloc</code>: when the mutator wants to allocate an object, it just <code>malloc</code> it, and when the GC discovers a dead object, it just <code>free</code> it.</p>
 <p><code>CompleteSubspace</code> introduces another complexity, as it only allocate/deallocate memory from the OS at 16KB-block level, and does memory management itself to divide the blocks into cells that it serves to the application. Therefore, it has to track whether each of its cells is available for allocation. The mutator allocates from the available cells, and the GC marks dead cells as available for allocation again.</p>
 <p>The <code>isMarked</code> bit is not enough for the <code>CompleteSubspace</code> allocator to determine if a cell contains a live object or not: newly allocated objects have <code>isMarked = false</code> but are clearly live objects. Therefore, we need another bit.</p>
-<p>In fact, there are other good reasons that we need to support checking if a cell contains a live object or not. An canonical example is the conservative stack scanning: JSC cannot precisely understand the layout of the stack, so it needs to treat everything on the stack that could be pointers and pointing to live objects as GC root, and this involves checking if a heap pointer points to a live object or not.</p>
+<p>In fact, there are other good reasons that we need to support checking if a cell contains a live object or not. A canonical example is the conservative stack scanning: JSC cannot precisely understand the layout of the stack, so it needs to treat everything on the stack that could be pointers and pointing to live objects as GC root, and this involves checking if a heap pointer points to a live object or not.</p>
 <p>One can easily imagine some kind of <code>isLive</code> bit that is <code>true</code> for all live objects, which is only flipped to <code>false</code> by GC when the object is dead. However, JSC employed a slightly different scheme, which is needed to facilitate optimizations that we will mention later.</p>
 <p>As you have seen earlier, the bit used by JSC is called <code>isNew</code>.</p>
 <p><a name="purposeOfIsNewBit"></a>However, keep in mind: you should <strong>not</strong> think of <code>isNew</code> as a bit that tells you <strong>anything</strong> related to its name, or indicates anything by itself. You should think of it as a helper bit, which sole purpose is that, when working togther with <code>isMarked</code>, they tell you if a cell contains a live object or not. This thinking mode will be more important in the next section when we introduce logical versioning.</p>
@@ -782,7 +782,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzdnqx000edjov7wdoehaj" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzpff4000eb9p403gfgx51" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->

@@ -204,7 +204,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4lzdnqq000ddjovemz1a6zl" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4lzpfes000db9p43d6ocri8" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -314,7 +314,7 @@
 <p>For <code>PreciseAllocation</code>, the actual memory management work is done by <code>malloc</code>: when the mutator wants to allocate an object, it just <code>malloc</code> it, and when the GC discovers a dead object, it just <code>free</code> it.</p>
 <p><code>CompleteSubspace</code> introduces another complexity, as it only allocate/deallocate memory from the OS at 16KB-block level, and does memory management itself to divide the blocks into cells that it serves to the application. Therefore, it has to track whether each of its cells is available for allocation. The mutator allocates from the available cells, and the GC marks dead cells as available for allocation again.</p>
 <p>The <code>isMarked</code> bit is not enough for the <code>CompleteSubspace</code> allocator to determine if a cell contains a live object or not: newly allocated objects have <code>isMarked = false</code> but are clearly live objects. Therefore, we need another bit.</p>
-<p>In fact, there are other good reasons that we need to support checking if a cell contains a live object or not. An canonical example is the conservative stack scanning: JSC cannot precisely understand the layout of the stack, so it needs to treat everything on the stack that could be pointers and pointing to live objects as GC root, and this involves checking if a heap pointer points to a live object or not.</p>
+<p>In fact, there are other good reasons that we need to support checking if a cell contains a live object or not. A canonical example is the conservative stack scanning: JSC cannot precisely understand the layout of the stack, so it needs to treat everything on the stack that could be pointers and pointing to live objects as GC root, and this involves checking if a heap pointer points to a live object or not.</p>
 <p>One can easily imagine some kind of <code>isLive</code> bit that is <code>true</code> for all live objects, which is only flipped to <code>false</code> by GC when the object is dead. However, JSC employed a slightly different scheme, which is needed to facilitate optimizations that we will mention later.</p>
 <p>As you have seen earlier, the bit used by JSC is called <code>isNew</code>.</p>
 <p><a name="purposeOfIsNewBit"></a>However, keep in mind: you should <strong>not</strong> think of <code>isNew</code> as a bit that tells you <strong>anything</strong> related to its name, or indicates anything by itself. You should think of it as a helper bit, which sole purpose is that, when working togther with <code>isMarked</code>, they tell you if a cell contains a live object or not. This thinking mode will be more important in the next section when we introduce logical versioning.</p>
@@ -901,7 +901,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzdnqx000edjov7wdoehaj" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzpff4000eb9p403gfgx51" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -981,7 +981,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl4lzdnqp000cdjovf6kwanll" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl4lzpfer000cb9p498j19czt" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1106,7 +1106,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl4lzdnqo000bdjovat5abkys" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl4lzpfeq000bb9p43878c0kz" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1218,7 +1218,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl4lzdnqn000adjovftqwf3fw" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl4lzpfep000ab9p4ezyjeyaa" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1298,7 +1298,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl4lzdnql0009djov49va300h" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl4lzpfen0009b9p4h6cbhxi6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1383,7 +1383,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl4lzdnql0008djovcgp1hvxk" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl4lzpfel0008b9p4cnaqb9ng" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1499,7 +1499,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl4lzdnqk0007djov11zkf6o5" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl4lzpfek0007b9p47fjrepx5" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1609,7 +1609,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl4lzdnqj0006djov10ve3b1v" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl4lzpfej0006b9p4hu8b03vj" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1702,7 +1702,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl4lzdnqi0005djov0ggo0gyy" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl4lzpfeh0005b9p49b5a5e41" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
