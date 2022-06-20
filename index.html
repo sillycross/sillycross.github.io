@@ -204,7 +204,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4m06w4z000dbeo50mb4flze" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4mbacsk000dahosgpi099kf" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -356,8 +356,8 @@
 </ol>
 <p>Why do we want to bother setting <code>isNew</code> to <code>true</code> for all already-allocated cells in the block? This is to provide a good property. Since we bump <code>g_newVersion</code> at the end of every GC cycle, due to the scheme above, for any block with latest <code>l_newVersion</code>, a cell is live if and only if its <code>isNew</code> bit is set. Now, when checking if a cell is live, if its <code>l_newVersion</code> is latest, then we can just return <code>isNew</code> without looking at <code>isMarked</code>, so our logic is simpler.</p>
 <p>The logical versioning for the <code>isMarked</code> bit is similar. At the beginning of a full GC cycle, we bump the <code>g_markVersion</code> to indicate that all mark bits are logically cleared. Note that the global version is not bumped for eden GC, since eden GC does not clear <code>isMark</code> bits.</p>
-<p>There is one extra complexity: the above scheme would break down in incremental GC. Specifically, <em>during</em> a full GC cycle, we have logically cleared the <code>isMarked</code> bit, but we also didn’t do anything to the <code>isNew</code> bit, so all cells would appear dead to the allocator. In our old scheme without logical versioning, this case is prevented by doing <code>isNew |= isMarked</code> at the start of the full GC, but we cannot do it now with logical versioning.</p>
-<p>JSC solves this problem with the following clever trick: <em>during</em> a full GC, we should also accept <code>l_markVersion</code> that is off-by-one. In that case, we know the <code>isMarked</code> bit accurately reflect whether or not a cell is live, since that is the result of the last GC cycle<sup class="footnote-ref"><a href="#fn21" id="fnref21">[21]</a></sup>. If you are a bit confused, it might help to take a look at the comments in the pseudo-code below:</p>
+<p>There is one extra complexity: the above scheme would break down in incremental GC. Specifically, <em>during</em> a full GC cycle, we have logically cleared the <code>isMarked</code> bit, but we also didn’t do anything to the <code>isNew</code> bit, so all cells in the old space would appear dead to the allocator. In our old scheme without logical versioning, this case is prevented by doing <code>isNew |= isMarked</code> at the start of the full GC, but we cannot do it now with logical versioning.</p>
+<p>JSC solves this problem with the following clever trick: <em>during</em> a full GC, we should also accept <code>l_markVersion</code> that is off-by-one. In that case, we know the <code>isMarked</code> bit accurately reflect whether or not a cell is live, since that is the result of the last GC cycle. If you are a bit confused, take a look at footnote<sup class="footnote-ref"><a href="#fn21" id="fnref21">[21]</a></sup> for a more elaborated case discussion. It might also help to take a look at the comments in the pseudo-code below:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">cellContainsLiveObject</span><span class="params">(BlockFooter* block, <span class="keyword">size_t</span> cellId)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (block-&gt;l_newVersion == g_newVersion) &#123;</span><br><span class="line">    <span class="comment">// A latest l_newVersion indicates that the cell is live if</span></span><br><span class="line">    <span class="comment">// and only if its 'isNew' bit is set, so we don't need to</span></span><br><span class="line">    <span class="comment">// look at the 'isMarked' bit even if 'isNew' is false</span></span><br><span class="line">    <span class="keyword">return</span> block-&gt;isNew[cellId];</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// Now we know isNew bit is logically false, so we should</span></span><br><span class="line">  <span class="comment">// look at the isMarked bit to determine if the object is live</span></span><br><span class="line">  <span class="keyword">if</span> (isMarkBitLogicallyCleared(block)) &#123;</span><br><span class="line">    <span class="comment">// The isMarked bit is logically false</span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125; </span><br><span class="line">  <span class="comment">// The isMarked bit is valid and accurately tells us if </span></span><br><span class="line">  <span class="comment">// the object is live or not</span></span><br><span class="line">  <span class="keyword">return</span> block-&gt;isMarked[cellId];</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Return true if the isMarked bitvector is logically cleared</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">isMarkBitLogicallyCleared</span><span class="params">(BlockFooter* block)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (block-&gt;l_markVersion == g_markVersion) &#123;</span><br><span class="line">    <span class="comment">// The mark version is up-to-date, so not cleared</span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">if</span> (IsFullGcRunning() &amp;&amp; IsGcInMarkingPhase() &amp;&amp; </span><br><span class="line">      block-&gt;l_markVersion == g_markVersion - <span class="number">1</span>) &#123;</span><br><span class="line">    <span class="comment">// We are halfway inside a full GC cycle's marking phase,</span></span><br><span class="line">    <span class="comment">// and the mark version is off-by-one, so the isMarked bit</span></span><br><span class="line">    <span class="comment">// should be accepted, and it accurately tells us if the </span></span><br><span class="line">    <span class="comment">// object is live or not</span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>Before we mark an object in <code>CompleteSubspace</code>, we need to update the <code>l_markVersion</code> of the block holding the cell to latest, and materialize the <code>isMarked</code> bits of all cells in the block. That is, we need to run the logic at the full GC preparation phase in our old scheme: <code>isNew |= isMarked</code>, <code>isMarked = false</code> for all cells in the block. This is shown below.</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Used by GC marking phase to mark an object in CompleteSubspace</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">markObject</span><span class="params">(BlockFooter* block, <span class="keyword">size_t</span> cellId)</span> </span>&#123;</span><br><span class="line">  aboutToMark(block);</span><br><span class="line">  block-&gt;isMarked[cellId] = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Materialize 'isMarked' bits if needed</span></span><br><span class="line"><span class="comment">// To do this, we need to execute the operation at full GC </span></span><br><span class="line"><span class="comment">// prepare phase: isNew |= isMarked, isMarked = false</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">aboutToMark</span><span class="params">(BlockFooter* block)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (block-&gt;l_markVersion == g_markVersion) &#123;</span><br><span class="line">    <span class="comment">// Our mark version is already up-to-date,</span></span><br><span class="line">    <span class="comment">// which means it has been materialized before</span></span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// Check if the isMarked bit is logically cleared to false.</span></span><br><span class="line">  <span class="comment">// The function is defined in the previous snippet.</span></span><br><span class="line">  <span class="keyword">if</span> (isMarkBitLogicallyCleared(block)) &#123;</span><br><span class="line">    <span class="comment">// This means that the isMarked bitvector should </span></span><br><span class="line">    <span class="comment">// be treated as all false. So operation isNew |= isMarked </span></span><br><span class="line">    <span class="comment">// is no-op, so all we need to do is isMarked = false</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">size_t</span> cellId = <span class="number">0</span>; cellId &lt; block-&gt;numCells; cellId++) &#123;</span><br><span class="line">      block-&gt;isMarked[cellId] = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="comment">// The 'isMarked' bit is not logically cleared. Now let's </span></span><br><span class="line">    <span class="comment">// check if the 'isNew' bit is logically cleared.</span></span><br><span class="line">    <span class="keyword">if</span> (block-&gt;l_newVersion &lt; g_newVersion) &#123;</span><br><span class="line">      <span class="comment">// The isNew bitvector is logically cleared and should be </span></span><br><span class="line">      <span class="comment">// treated as false. So operation isNew |= isMarked becomes</span></span><br><span class="line">      <span class="comment">// isNew = isMarked (note that executing |= is incorrect </span></span><br><span class="line">      <span class="comment">// beacuse isNew could physically contain true!)</span></span><br><span class="line">      <span class="keyword">for</span>(<span class="keyword">size_t</span> cellId = <span class="number">0</span>; cellId &lt; block-&gt;numCells; cellId++) &#123;</span><br><span class="line">        block-&gt;isNew[cellId] = block-&gt;isMarked[cellId];</span><br><span class="line">        block-&gt;isMarked[cellId] = <span class="literal">false</span>;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment">// We materialized isNew, so update it to latest version</span></span><br><span class="line">      block-&gt;l_newVersion = g_newVersion;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; </span><br><span class="line">      <span class="comment">// The l_newVersion is latest, which means that the cell is </span></span><br><span class="line">      <span class="comment">// live if and only if its isNew bit is set. </span></span><br><span class="line">      <span class="comment">// Since isNew already reflects liveness, we do not have to</span></span><br><span class="line">      <span class="comment">// perform the operation isNew |= isMarked (and in fact, it </span></span><br><span class="line">      <span class="comment">// must be a no-op since no dead cell can have isMarked = </span></span><br><span class="line">      <span class="comment">// true). So we only need to do isMarked = false</span></span><br><span class="line">      <span class="keyword">for</span>(<span class="keyword">size_t</span> cellId = <span class="number">0</span>; cellId &lt; block-&gt;numCells; cellId++) &#123;</span><br><span class="line">        block-&gt;isMarked[cellId] = <span class="literal">false</span>;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// We finished materializing isMarked, so update the version</span></span><br><span class="line">  block-&gt;l_markVersion = g_markVersion;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
@@ -880,7 +880,7 @@ Do some check to t2 and push it to queue<br>
 </li>
 <li id="fn20" class="footnote-item"><p>In JSC, the version is stored in a <code>uint32_t</code> and they have a bunch of logic to handle the case that it overflows <code>uint32_t</code>. In my humble opinion, this is an overoptimization that results in very hard-to-test edge cases, especially in a concurrent setting. So we will ignore this complexity: one can easily avoid these by spending 8 more bytes per block footer to have <code>uint64_t</code> version number instead. <a href="#fnref20" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn21" class="footnote-item"><p>Note that any number of eden GC cycles may have run between the last full GC cycle and the current GC cycle. However, since eden GC does not bump mark version, the <code>isMarked</code> bit still honestly reflect if an object is live no matter when the object is born. <a href="#fnref21" class="footnote-backref">↩︎</a></p>
+<li id="fn21" class="footnote-item"><p>Note that any number of eden GC cycles may have run between the last full GC cycle and the current full GC cycle, but eden GC does not bump mark version. So for any object born before the last GC cycle (no matter eden or full), the <code>isMarked</code> bit honestly reflect if it is live, and we will accept the bit as its mark version must be off-by-one. For objects born after the last GC cycle, it must have a latest <code>isNew</code> version, so we can know it’s alive through <code>isNew</code>. In both cases, the scheme correctly determines if an object is alive, just as desired. <a href="#fnref21" class="footnote-backref">↩︎</a></p>
 </li>
 <li id="fn22" class="footnote-item"><p>And probably not: first, true sharing and false sharing between GC and mutator can cause slowdown. Second, as we have covered before, JSC uses a Time-Space Scheduler to prevent the mutator from allocating too fast while the GC is running. Specifically, the mutator will be intentionally suspended for at least 30% of the duration. So as long as the GC is running, the mutator suffers from an 30%-or-more “performance tax”. <a href="#fnref22" class="footnote-backref">↩︎</a></p>
 </li>
@@ -901,7 +901,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4m06w59000ebeo5gbxv44h0" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4mbacsr000eahosf13p4piy" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -981,7 +981,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl4m06w4y000cbeo573a769ic" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl4mbacsk000cahos84wu0rdi" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1106,7 +1106,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl4m06w4x000bbeo5bqkod4ly" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl4mbacsj000bahos83rudlej" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1218,7 +1218,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl4m06w4w000abeo58kizd1bl" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl4mbacsi000aahos72321t8v" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1298,7 +1298,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl4m06w4v0009beo5em0wgh60" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl4mbacsg0009ahoshgqx5781" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1383,7 +1383,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl4m06w4u0008beo53z2chwv3" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl4mbacsf0008ahosawec6lq1" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1499,7 +1499,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl4m06w4t0007beo5186n4g4h" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl4mbacse0007ahos43ej5tuk" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1609,7 +1609,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl4m06w4s0006beo54w5xh67v" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl4mbacsd0006ahos6ca2gw4t" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1702,7 +1702,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl4m06w4r0005beo5go6e8g0y" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl4mbacsc0005ahos1cgy1j8a" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
