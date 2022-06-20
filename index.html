@@ -204,7 +204,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4lzx2nh000daooi3znk5qkx" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4m06w4z000dbeo50mb4flze" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -258,7 +258,7 @@
 <ol>
 <li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/CompleteSubspace.h.html#32" target="_blank" rel="noopener">CompleteSubspace</a>: this is a segregated allocator responsible for allocating small objects (max size about 8KB). Specifically, there is a pre-defined list of exponentially-growing size-classes<sup class="footnote-ref"><a href="#fn7" id="fnref7">[7]</a></sup>, and one <code>BlockDirectory</code> is used to handle allocation for each size class. So to allocate an object, you find the smallest size class large enough to hold the object, and allocate from that size class.</li>
 <li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation" target="_blank" rel="noopener">PreciseAllocation</a>: this is used to handle large allocations that cannot be handled by <code>CompleteSubspace</code> allocator<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup>. It simply relies on the standard (malloc-like) memory allocator, though in JSC a custom malloc implementation called <code>libpas</code> is used. The downside is that since <code>PreciseAllocation</code> is done on a per-object basis, it cannot aggregate and share metadata information of multiple objects together to save memory and improve performance (as <code>CompleteSubspace</code>’s block footer did). Therefore, every <code>PreciseAllocation</code> comes with a whopping overhead of a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/PreciseAllocation.h.html#JSC::PreciseAllocation" target="_blank" rel="noopener">96-byte GC header</a> to store the various metadata information needed for GC for this object (though this overhead is justified since each allocation is already at least 8KB).</li>
-<li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/IsoSubspace.h.html#JSC::IsoSubspace" target="_blank" rel="noopener">IsoSubspace</a>: each <code>IsoSubspace</code> is used to allocate objects of a fixed type with a fixed size. So each <code>IsoSubspace</code> simply holds a <code>BlockDirectory</code> to do allocation (though JSC also has an optimization for small <code>IsoSubspace</code> backed by <code>PreciseAllocation</code><sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>). This is mainly a security hardening feature that makes use-after-free-based attacks harder<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup>.</li>
+<li><a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/heap/IsoSubspace.h.html#JSC::IsoSubspace" target="_blank" rel="noopener">IsoSubspace</a>: each <code>IsoSubspace</code> is used to allocate objects of a fixed type with a fixed size. So each <code>IsoSubspace</code> simply holds a <code>BlockDirectory</code> to do allocation (though JSC also has an optimization for small <code>IsoSubspace</code> by making them backed by <code>PreciseAllocation</code><sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>). This is mainly a security hardening feature that makes use-after-free-based attacks harder<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup>.</li>
 </ol>
 <p>As you can see, <code>IsoSubspace</code> is mostly a simplified <code>CompleteSubspace</code>, so we will ignore it for the purpose of this post. <code>CompleteSubspace</code> is the one that handles the common case: small allocations, while <code>PreciseAllocation</code> is the rare slow path for large allocations.</p>
 <h3 id="Generational-GC-Basics">Generational GC Basics</h3>
@@ -901,7 +901,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4lzx2np000eaooi4ho013mi" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4m06w59000ebeo5gbxv44h0" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -981,7 +981,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl4lzx2ng000caooi59my8fx2" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl4m06w4y000cbeo573a769ic" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1106,7 +1106,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl4lzx2nf000baooi36sc6l94" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl4m06w4x000bbeo5bqkod4ly" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1218,7 +1218,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl4lzx2ne000aaooi3dwy91l8" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl4m06w4w000abeo58kizd1bl" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1298,7 +1298,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl4lzx2nd0009aooib3is93u8" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl4m06w4v0009beo5em0wgh60" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1383,7 +1383,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl4lzx2nc0008aooi3tzgcfzs" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl4m06w4u0008beo53z2chwv3" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1499,7 +1499,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl4lzx2nb0007aooi77yp6bi3" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl4m06w4t0007beo5186n4g4h" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1609,7 +1609,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl4lzx2na0006aooic563044k" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl4m06w4s0006beo54w5xh67v" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1702,7 +1702,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl4lzx2n90005aooi0roi5h1i" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl4m06w4r0005beo5go6e8g0y" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
