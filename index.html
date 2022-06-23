@@ -204,7 +204,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4nffx22000d9corbopre4fy" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4qtrslu000d91ovh2v95y5p" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -390,7 +390,7 @@
 <p>Let’s look at our new <code>WriteBarrier</code>:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Executed after writing a pointer to 'dst' into a field of 'obj'</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">WriteBarrier</span><span class="params">(JSCell* obj)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (obj-&gt;cellState == black) </span><br><span class="line">    WriteBarrierSlowPath(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>The first thing to notice is that the <code>WriteBarrier</code> is no longer checking if <code>dst</code> (the object that the pointer points to) is marked or not. Clearly this does not affect the correctness: we are just making the criteria less restrictive. However, it is unclear to me if we can improve performance while maintaining correctness by making some kind of check on <code>dst</code> as well, like the original <code>WriteBarrier</code> did.</p>
-<p>I wasn’t able to get a definite answer on this even from JSC developer. They have two <em>conjectures</em> on why they are doing this: first, by not checking <code>dst</code>, more objects are put into the remembered set and need to be scanned by GC, so the total amount of work increased. However, the mutator’s work probably decreased, as it does less checks and touches less cache lines (by not touching the outlined <code>isMarked</code> bit). Of course, the benefit is offsetted by that the mutator is adding more objects into the remembered set, but this isn’t too expensive either, as the remembered set is only a segmented vector. GC has to do more work, as it needs to scan and mark more objects. However, after we make our scheme concurrent, the marking phase of GC can be done concurrently as the mutator is running, so the latency is probably<sup class="footnote-ref"><a href="#fn22" id="fnref22">[22]</a></sup> hidden. Second, JSC’s DFG compiler has <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGStoreBarrierClusteringPhase.cpp.html#JSC::DFG::(anonymousnamespace)::StoreBarrierClusteringPhase" target="_blank" rel="noopener">some optimization passes</a> that cluster barriers on the same object together, and the barrier emitted this way naturally cannot check <code>dst</code>. Therefore, to make things easier, they simply made all the barriers to not check <code>dst</code>. Although these are all conjectures, and it is unclear if adding back the <code>dst</code> check can improve performance, this is how JSC works, so let’s stick to it.</p>
+<p>I wasn’t able to get a definite answer on this even from JSC developer. They have two <em>conjectures</em> on why they are doing this: first, by not checking <code>dst</code>, more objects are put into the remembered set and need to be scanned by GC, so the total amount of work increased. However, the mutator’s work probably decreased, as it does less checks and touches less cache lines (by not touching the outlined <code>isMarked</code> bit). Of course, the benefit is offsetted by that the mutator is adding more objects into the remembered set, but this isn’t too expensive either, as the remembered set is only a segmented vector. GC has to do more work, as it needs to scan and mark more objects. However, after we make our scheme concurrent, the marking phase of GC can be done concurrently as the mutator is running, so the latency is probably<sup class="footnote-ref"><a href="#fn22" id="fnref22">[22]</a></sup> hidden. Second, JSC’s DFG compiler has <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGStoreBarrierInsertionPhase.cpp.html" target="_blank" rel="noopener">optimization pass</a> that coalesces barriers on the same object together, and the barrier emitted this way naturally cannot check <code>dst</code>. Therefore, to make things easier, they simply made all the barriers to not check <code>dst</code>. Although these are all conjectures, and it is unclear if adding back the <code>dst</code> check can improve performance, this is how JSC works, so let’s stick to it.</p>
 <p>The interesting part is how the invariants above are maintained by the relavent parties. As always, there are three actors: the mutator (<code>WriteBarrier</code>), the allocator, and the GC.</p>
 <p>The interaction with the allocator is the simplest. All objects are born <code>white</code>. This is correct because newly-born objects are not marked, so have no reason to be remembered.</p>
 <p>The interaction with GC is during the GC marking phase:</p>
@@ -417,7 +417,7 @@
 <p>To squeeze out every bit of performance, JSC proceeded to make the GC scheme concurrent. However, due to the nature of GC, it’s often infeasible to use locks to protect against race conditions for performance reasons, so extensive lock-free programming is employed.</p>
 <p>But once lock-free programming is involved, one starts to get into all sorts of architecture-dependent memory reordering problems. x86-64 is the more sane architecture: it only requires <code>StoreLoadFence()</code>, and it provides somewhat-TSO-like semantics, but JSC also needs ARM64 support for their Apple Sillicon devices. ARM64 has even fewer guarantees: load-load, load-store, store-load, and store-store can all be reordered by the CPU, so any innocent operation could actually need a fence. As if things were not bad enough, for performance reasons, JSC does not want to use too many memory fences on ARM64. So they have the so-called <code>Dependency</code> <a href="https://sillycross.github.io/r/WebKit/Source/WTF/wtf/Atomics.h.html#_ZN3WTF10DependencyC1Ev" target="_blank" rel="noopener">class</a>, which creates an implicit CPU data dependency on ARM64 through some scary assembly hacks, so they can get the desired memory ordering for a specific data-flow without paying the cost of a memory fence. As you can imagine, with all of these complications and optimizations, the code can easily become horrifying.</p>
 <p>So due to my limited expertise, it’s unsurprising if I missed to explain or mis-explained some important race conditions in the code, especially some ARM64-specific ones: if you spotted any issue in this post, please definitely let me know.</p>
-<p>Let’s go through the concurrency assumptions first. Javascript is a single-threaded language, so there is always only one mutator thread<sup class="footnote-ref"><a href="#fn23" id="fnref23">[23]</a></sup>. Apart from the mutator thread, JSC has a compilation thread, a GC thread, and a bunch of marking threads. Only the GC marking phase is concurrent: during which the mutator thread, the compiler threads, and a bunch of marking threads are concurrently running (yes, the marking itself is also done in parallel). However, all the other GC phases are run with the mutator thread and compilation thread stopped.</p>
+<p>Let’s go through the concurrency assumptions first. Javascript is a single-threaded language, so there is always only one mutator thread<sup class="footnote-ref"><a href="#fn23" id="fnref23">[23]</a></sup>. Apart from the mutator thread, JSC has a bunch of compilation threads, a GC thread, and a bunch of marking threads. Only the GC marking phase is concurrent: during which the mutator thread, the compiler threads, and a bunch of marking threads are concurrently running (yes, the marking itself is also done in parallel). However, all the other GC phases are run with the mutator thread and compilation threads stopped.</p>
 <h4 id="Some-Less-Interesting-Issues">Some Less Interesting Issues</h4>
 <p>First of all, clearly the <code>isMarked</code> and <code>isNew</code> bitvector must be made safe for concurrent access, since multiple threads (including marking threads and mutator) may concurrently update it. Using CAS with appropriate retry/bail mechanism is enough for the bitvector itself.</p>
 <p><code>BlockFooter</code> is harder, and needs to be protected with a lock: multiple threads could be simutanuously calling <code>aboutToMark()</code>, so <code>aboutToMark()</code> must be guarded. For the reader side (the <code>isMarked()</code> function, which involves first checking if <code>l_markVersion</code> is latest, then reading the <code>isMarked</code> bitvector), in x86-64 thanks to x86-TSO, one does not need a lock or any memory fence (as long as <code>aboutToMark</code> takes care to update <code>l_markVersion</code> after the bitvector). In ARM64, since load-load reordering is allowed, a <code>Dependency</code> is required.</p>
@@ -425,7 +425,7 @@
 <p>Of course, there are a lot more subtle issues to change. Almost all the pseudo-code above needs to be adapted for concurrency, either by using a lock or CAS, or by using some sort of memory barriers and concurrency protocol to ensure that the code works correctly under concurrency settings. But now let’s turn to some more important and tricky issues.</p>
 <h4 id="The-Race-Between-WriteBarrier-and-Marking">The Race Between WriteBarrier and Marking</h4>
 <p>One of the most important race is the race between <code>WriteBarrier</code> and GC’s marking threads. The marking threads and the mutator thread can access the <code>cellState</code> of an object concurrently. For performance reasons, a lock is infeasible, so race condition arises.</p>
-<p>It’s important to note that we call <code>WriteBarrier</code> <strong>after</strong> we have written the pointer into the object. This is not only more convenient to use (especially for JIT-generated code), but also allows a few optimizations: for example, multiple writes to the same object may only call <code>WriteBarrier</code> once at the end.</p>
+<p>It’s important to note that we call <code>WriteBarrier</code> <strong>after</strong> we have written the pointer into the object. This is not only more convenient to use (especially for JIT-generated code), but also allows a few optimizations: for example, <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGStoreBarrierInsertionPhase.cpp.html" target="_blank" rel="noopener">in certain cases</a>, multiple writes to the same object may only call <code>WriteBarrier</code> once at the end.</p>
 <p>With this in mind, let’s analyze why our current implementation is buggy. Suppose <code>o</code> is an object, and the mutator wants to store a pointer to another object <code>target</code> into a field <code>f</code> of <code>o</code>. The marking logic of GC wants to scan <code>o</code> and append its children into the queue. We need to make sure that GC will observe the <code>o -&gt; target</code> pointer link.</p>
 <p>Let’s first look at the correct logic:</p>
 <div>
@@ -901,7 +901,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl4nffx28000e9corfpal0n6c" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl4qtrsm3000e91ove8y9fy7b" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -981,7 +981,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl4nffx21000c9cor5cvq5ift" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl4qtrsls000c91ov955jfhz9" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1106,7 +1106,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl4nffx20000b9corf4pkd3vt" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl4qtrslr000b91ov3id82rkb" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1218,7 +1218,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl4nffx1z000a9corf7rbblcs" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl4qtrslq000a91ov6bfohofm" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1298,7 +1298,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl4nffx1x00099cor1454hkzx" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl4qtrsln000991oved0t6wxw" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1383,7 +1383,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl4nffx1w00089corfl1ghl34" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl4qtrslm000891ov4sksc1lm" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1499,7 +1499,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl4nffx1v00079cor4jz02arx" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl4qtrsll000791ovhsu92xzy" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1609,7 +1609,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl4nffx1u00069cor38jhf5u6" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl4qtrslj000691ovddkn00bd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1702,7 +1702,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/03/2021-09-03/" data-id="cl4nffx1t00059cor03ywec1j" class="article-share-link">
+      <a data-url="2021/09/03/2021-09-03/" data-id="cl4qtrsli000591ovcad1d9c7" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
