@@ -5,12 +5,12 @@
   
   <title>Bizarre Performance Characteristics of Alder Lake CPU | </title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. As a performance engineer, it’s routine to eval">
+  <meta name="description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. UPDATE: A colleague of mine reported that the b">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Bizarre Performance Characteristics of Alder Lake CPU">
 <meta property="og:url" content="2022/06/11/2022-06-11/index.html">
 <meta property="og:site_name">
-<meta property="og:description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. As a performance engineer, it’s routine to eval">
+<meta property="og:description" content="TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it. UPDATE: A colleague of mine reported that the b">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="/images/2022-06-11/P-Core-3.png">
 <meta property="og:image" content="/images/2022-06-11/P-Core-1.png">
@@ -20,7 +20,7 @@
 <meta property="og:image" content="/images/2022-06-11/P-Core-2.png">
 <meta property="og:image" content="/images/2022-06-11/E-Core.png">
 <meta property="article:published_time" content="2022-06-11T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-06-23T09:31:33.380Z">
+<meta property="article:modified_time" content="2022-06-27T02:12:17.081Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="/images/2022-06-11/P-Core-3.png">
@@ -135,6 +135,7 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>TL;DR: Some of the P-cores in Alder Lake CPU can exhibit highly unstable performance behavior, resulting in large noise for any benchmark running on it.</p>
+<p>UPDATE: A colleague of mine reported that the behavior can be observed on his i9-9980HK as well, and observed ~25% end-performance fluctuations on short-running benchmarks. So it seems like this behavior as been around for quite a while – dating back to at least the 9th-gen Intel CPU<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>.</p>
 <p>As a performance engineer, it’s routine to evaluate the performance before and after a code commit. This is why I’ve been faintly feeling that something is unusual about my new Intel Alder Lake i7-12700H laptop CPU.</p>
 <p>Today I dug into the problem. As I discovered, this CPU indeed exhibits some highly unusual and surprising performance characteristics, which can easily cause pitfalls for benchmarks.</p>
 <p>For background, Alder Lake features a <em>hybrid architecture</em> of the powerful P-cores and the weaker E-cores. i7-12700H has 6 P-cores and 8 E-cores. Of course, we want to have the P-cores run our time-sensitive tasks, such as our benchmarks. This can be done easily by <code>taskset</code> the process to only P-cores.</p>
@@ -145,7 +146,7 @@
 </ol>
 <p>Point 1 implies that we cannot enjoy the full performance promoted by Intel. Point 2 implies that the core cannot deliver <em>consistent</em> performance, which is problematic for performance engineering, as the noise would make two benchmark runs less comparable.</p>
 <h3 id="Test-Setup">Test Setup</h3>
-<p>To expose the problem, I wrote a dumb program that increments a variable in a dead loop, so that the frequency of the CPU running the program is maxed out. Then I use <code>taskset</code> to pin the program to one CPU, have it run for 60 seconds, and run <code>cpufreq</code> every second to record the frequency of that CPU in the duration<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>.</p>
+<p>To expose the problem, I wrote a dumb program that increments a variable in a dead loop, so that the frequency of the CPU running the program is maxed out. Then I use <code>taskset</code> to pin the program to one CPU, have it run for 60 seconds, and run <code>cpufreq</code> every second to record the frequency of that CPU in the duration<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>.</p>
 <p>I took the following precautions to ensure nothing outside the CPU chip is limiting the CPU from boosting to its max frequency:</p>
 <ol>
 <li>Use <code>isolcpus</code> Linux kernel boot parameter to exclusively dedicate the tested CPU core to our test program. This removes any noise caused by the OS.</li>
@@ -166,7 +167,7 @@
 </ol>
 <p>We will explain their performance characteristics below.</p>
 <h3 id="The-“Wild-Cores”">The “Wild Cores”</h3>
-<p>Let’s start with the most bizarre cores: the wild ones. As it turns out, 3 out of my 6 P-cores are wild (a whopping 50%!), and among those three cores, one of them is particularly wild, as shown in the plot below<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>:</p>
+<p>Let’s start with the most bizarre cores: the wild ones. As it turns out, 3 out of my 6 P-cores are wild (a whopping 50%!), and among those three cores, one of them is particularly wild, as shown in the plot below<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>:</p>
 <p><img src="/images/2022-06-11/P-Core-3.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
 <p>As you can see, the CPU frequency turbulents violently from 4.05GHz to 4.55GHz, and each run exhibits a completely different pattern. Clearly, if any benchmark were run on this core, such a large noise would be a headache to deal with.</p>
 <p>The other two wild cores I got were less turbulent. Even though, the noise introduced by the frequency instability still make them not ideal for benchmark comparison:</p>
@@ -179,7 +180,7 @@
 <img src="/images/2022-06-11/P-Core-4.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
 <p>As one can see, the core for the second graph has slightly higher frequency variations. Nevertheless, they are much stabler than the three wild cores.</p>
 <h3 id="The-“Gold-Core”">The “Gold Core”</h3>
-<p>Only 1 out of the 6 P-cores of my i7-12700H matches Intel’s marketing<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>:</p>
+<p>Only 1 out of the 6 P-cores of my i7-12700H matches Intel’s marketing<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>:</p>
 <p><img src="/images/2022-06-11/P-Core-2.png" alt="x-axis: CPU frequency in GHz, y-axis: time (60 seconds), each line is one run"></p>
 <p>As one can see, it operates stably at about 4.68GHz, just as Intel claimed.</p>
 <h3 id="The-Behavior-of-the-E-cores">The Behavior of the E-cores</h3>
@@ -190,16 +191,21 @@
 <p>Additionally, since i7-12700H is just the same i9-12900 chip with two below-quality P-cores disabled, it is also interesting to know if the behavior shows up on higher-end Alder Lake models, like the i9-12900K, as those presumably come from the better silicons, but I don’t have the ability to validate it.</p>
 <p>Nevertheless, from a practicalist’s perspective, the action to take is clear: run the benchmark to identify the best cores and the performance-unstable cores on your chip, avoid running benchmarks on the performance-unstable cores, and use the best cores for the most latency-sensitive application.</p>
 <p>For example, for my particular chip, physical core 2 (logical core 4-5) turns out to be the only “gold core”, so <code>taskset -c 4</code> for single-threaded benchmark is a good idea. Similarly, for latency-sensitive multi-threaded application (like the <code>QtCreator</code> IDE, where UX is heavily affected by auto-completion latency), it is reasonable to modify the startup command in the desktop link to pin it to the good cores (logical core <code>0,1,4,5,8,9</code> in my particular chip).</p>
+<h4 id="But-why">But why?</h4>
+<p>I’m not expert at all, but my conjecture is that the increase in clock frequency and # of cores in recent CPUs <em>might</em> be the cause: due to <a href="https://www.makeuseof.com/silicon-lottery-why-no-two-processors-are-the-same/" target="_blank" rel="noopener">silicon lottery</a>, the max stable clock frequency is inherently different for each core. So as the chip gets more cores, it becomes exponentially harder to find chips where <em>all</em> cores in the chip match the spec frequency criteria – so maybe that’s why Intel loosened their criteria?</p>
+<p>On the other hand, boost frequency is <em>designed</em> to go down as more cores become active. So in theory, having one golden core is actually enough, as long as the OS is aware of which core is golden, and assigns performance-demanding task to that core. However, it doesn’t seem to be the case yet, at least for my Ubuntu running Linux kernel 5.15.</p>
 <hr>
 <h4 id="Footnotes">Footnotes</h4>
 <hr class="footnotes-sep">
 <section class="footnotes">
 <ol class="footnotes-list">
-<li id="fn1" class="footnote-item"><p>The full bash script for the test can be found <a href="https://sillycross.github.io/assets/2022-06-11/i7_12700h_cpu_test.txt" target="_blank" rel="noopener">here</a>. For least noise, you should use <code>isolcpus</code> boot parameter to isolate a subset of CPUs, reboot, modify the script to only test the isolated subset, then change <code>isolcpus</code> to isolate the opposite set of CPUs, reboot, and modify the script to test the opposite set. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+<li id="fn1" class="footnote-item"><p>On the other hand, my 7-th generation i7-7700HQ CPU does not have the problem described in this post. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn2" class="footnote-item"><p>The two logical CPUs of the physical core exhibit the same behavior, so I only show one of them. Same for other figures in this post. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+<li id="fn2" class="footnote-item"><p>The full bash script for the test can be found <a href="https://sillycross.github.io/assets/2022-06-11/i7_12700h_cpu_test.txt" target="_blank" rel="noopener">here</a>. For least noise, you should use <code>isolcpus</code> boot parameter to isolate a subset of CPUs, reboot, modify the script to only test the isolated subset, then change <code>isolcpus</code> to isolate the opposite set of CPUs, reboot, and modify the script to test the opposite set. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn3" class="footnote-item"><p>Though if you take a closer look at their specification, you’ll see what Intel claimed is “up to 4.7GHz”, so technically they did not lie, as they never claimed all cores can meet their specification – though, I guess, two cores 0.2GHz slower, two cores 0.35GHz slower and turbulent, one core 0.5GHz slower and highly turbulent is still, hmm. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+<li id="fn3" class="footnote-item"><p>The two logical CPUs of the physical core exhibit the same behavior, so I only show one of them. Same for other figures in this post. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>Though if you take a closer look at their specification, you’ll see what Intel claimed is “up to 4.7GHz”, so technically they did not lie, as they never claimed all cores can meet their specification – though, I guess, two cores 0.2GHz slower, two cores 0.35GHz slower and turbulent, one core 0.5GHz slower and highly turbulent is still, hmm. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
 </li>
 </ol>
 </section>
@@ -214,7 +220,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl4qtrslu000d91ovh2v95y5p" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl4w3u7wz000d9foh3tq16rzp" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
