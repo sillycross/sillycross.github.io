@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>How to check if a real number is an integer in C++? | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="I have a double in hand, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int">
+<meta property="og:type" content="article">
+<meta property="og:title" content="How to check if a real number is an integer in C++?">
+<meta property="og:url" content="2022/07/18/2022-07-18/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="I have a double in hand, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="/images/2022-07-18/output1.png">
+<meta property="article:published_time" content="2022-07-18T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-19T09:02:51.519Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/2022-07-18/output1.png">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2022-07-18" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      How to check if a real number is an integer in C++?
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-07-18T00:00:00.000Z" itemprop="datePublished">2022-07-18</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>I have a <code>double</code> in hand, and I want to know if its value is an integer that fits in a <code>int64_t</code>. How can I do it in C++?</p>
+<p>Ask any C++ newbie, and you will get an obvious “answer”: cast your <code>double</code> to <code>int64_t</code>, then cast it back to <code>double</code>, and compare if it equals your original number.</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>But is it really correct? Let’s test it:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%s"</span>, IsInt64(<span class="number">1e100</span>) ? <span class="string">"1"</span> : <span class="string">"0"</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>and <a href="https://godbolt.org/z/r8j98rKqd" target="_blank" rel="noopener">here’s the output</a> under <code>clang -O3</code> (latest version 14.0.0):</p>
+<p><img src="/images/2022-07-18/output1.png" alt="(a bunch of junk characters that varies from run to run)"></p>
+<p>!@#$%^&amp;… Why? Shouldn’t it at least print either a <code>1</code> or a <code>0</code>?</p>
+<h3 id="The-Undefined-Behavior">The Undefined Behavior</h3>
+<p>Here’s the reason: when you cast a floating-point value to an integer type, <a href="https://en.cppreference.com/w/cpp/language/implicit_conversion#Floating.E2.80.93integral_conversions" target="_blank" rel="noopener">according to C/C++ standard</a>, if the integral part of the value does not fit into the integer type, the behavior is undefined (by the way, casting special floating-point values <code>NaN</code>, <code>INF</code>, <code>-INF</code> to integer is also undefined behavior).</p>
+<p>And unfortunately, Clang did the least helpful thing in this case:</p>
+<ol>
+<li>It inlined the function <code>IsInt64</code>, so <code>IsInt64(1e100)</code> becomes expression <code>1e100 == (double)(int64_t)1e100</code>.</li>
+<li>It deduces that <code>(int64_t)1e100</code> incurs undefined behavior since <code>1e100</code> does not fit into <code>int64_t</code>, so it evaluates to a special <code>poison</code> value (i.e., undefined).</li>
+<li>Any expression on a <code>poison</code> value also produces <code>poison</code>. So Clang deduces that expression <code>IsInt64(1e100) ? &quot;1&quot; : &quot;0&quot;</code> ultimately evaluates to <code>posion</code>.</li>
+<li>As a result, Clang deduces that the second parameter to <code>printf</code> is an undefined value. So in machine code, the whole expression is “optimized out”, and whatever junk stored in that register gets passed to <code>printf</code>. <code>printf</code> will interpret that junk value as a pointer and prints out whatever content at that address, yielding the junk output.</li>
+</ol>
+<p>Note that even though <code>gcc</code> happens to produce the expected output in this case, the undefined behavior is still there (as all C/C++ compilers conform to the same C/C++ Standard), so there is no guarantee that the <code>IsInt64</code> function above will work on <code>gcc</code> or any compiler.</p>
+<p>So how to implement this innocent function in a standard-compliant way?</p>
+<h3 id="The-Bad-Fix-Attempt-1">The Bad Fix Attempt #1</h3>
+<p>To avoid the undefined behavior, we must check that the <code>double</code> fits in the range of the <code>int64_t</code> before doing the casting. However, there’s a few tricky problems involved:</p>
+<ol>
+<li>While <code>-2^63</code> (the smallest <code>int64_t</code>) has an exact representation in <code>double</code>, <code>2^63-1</code> (the largest <code>int64_t</code>) doesn’t. So we must be careful about the rounding problems when doing the comparison.</li>
+<li>Comparing the special floating-point value <code>NaN</code> with any number will yield <code>false</code>, so we must write our check in a way that <code>NaN</code> won’t pass the check.</li>
+</ol>
+<p>With these in mind, here’s the updated version:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="number">-9223372036854775808.0</span> &lt;= d &amp;&amp; d &lt; <span class="number">9223372036854775808.0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>However, unfortunately, while the above version is correct, it results in some unnecessarily terrible code on x86-64:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">.LCPI0_0:</span><br><span class="line">  .quad   0xc3e0000000000000     # double -9.2233720368547758E+18</span><br><span class="line">.LCPI0_1:</span><br><span class="line">  .quad   0x43e0000000000000     # double 9.2233720368547758E+18</span><br><span class="line">IsInt64(double):                            # @IsInt64(double)</span><br><span class="line">  xor        eax,  eax</span><br><span class="line">  ucomisd    xmm0, qword ptr [rip + .LCPI0_0]</span><br><span class="line">  jb         .LBB0_3</span><br><span class="line">  movsd      xmm1, qword ptr [rip + .LCPI0_1] </span><br><span class="line">  ucomisd    xmm1, xmm0</span><br><span class="line">  jbe        .LBB0_3</span><br><span class="line">  cvttsd2si  rax,  xmm0</span><br><span class="line">  xorps      xmm1, xmm1</span><br><span class="line">  cvtsi2sd   xmm1, rax</span><br><span class="line">  cmpeqsd    xmm1, xmm0</span><br><span class="line">  movq       rax,  xmm1</span><br><span class="line">  and        eax,  1</span><br><span class="line">.LBB0_3:</span><br><span class="line">  ret</span><br></pre></td></tr></table></figure>
+<p>In fact, despite that out-of-range floating-point-to-integer cast is undefined behavior in C/C++, the x86-64 instruction <code>cvttsd2si</code> used above to perform the cast is <a href="https://www.felixcloutier.com/x86/cvttsd2si" target="_blank" rel="noopener">well-defined on all inputs</a>: if the input doesn’t fit in <code>int64_t</code>, then the output is <code>0x80000000 00000000</code>. And since <code>0x80000000 00000000</code> has an exact representation in <code>double</code>, casting it back to <code>double</code> will yield <code>-2^63</code>, which won’t compare equal to any <code>double</code> value but <code>-2^63</code>.</p>
+<p>So the range-check is actually unnecessary for the code to behave correctly on x86-64: it is only there to keep the C++ compiler happy, but unfortunately, the C++ compiler is unable to realize that such check is unnecessary on x86-64, thus cannot optimize it out on x86-64.</p>
+<p>To summarize, on x86-64, all we need to generate is the last few lines of the above code.</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">IsInt64(double):                           # @IsInt64(double)</span><br><span class="line">  cvttsd2si  rax,  xmm0</span><br><span class="line">  cvtsi2sd   xmm1, rax</span><br><span class="line">  cmpeqsd    xmm1, xmm0</span><br><span class="line">  movq       rax,  xmm1</span><br><span class="line">  and        eax,  1</span><br><span class="line">  ret</span><br></pre></td></tr></table></figure>
+<p>But is there any way we can teach the compiler to generate such assembly?</p>
+<h3 id="The-Bad-Fix-Attempt-2">The Bad Fix Attempt #2</h3>
+<p>In fact, our original buggy implementation</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>produces <a href="https://godbolt.org/z/66Y4nKc1b" target="_blank" rel="noopener">exactly the above assembly</a>. The problem is, whenever the optimizer of the C++ compiler inlines this function and figures out that the input is a compile-time constant, it will do constant propagation according to C++ rule – and as a result, generate the <code>poison</code> value. So can we stop the optimizer from this unwanted optimization, while still having it doing optimizations properly for the rest of the program?</p>
+<p>In fact, I have posted this question on LLVM forum months ago, and didn’t get an answer. But recently I suddenly had an idea. <code>gcc</code> and <code>clang</code> all support a <a href="https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html" target="_blank" rel="noopener">crazy builtin</a> named <code>__builtin_constant_p</code>. Basically this builtin takes one parameter, and returns <code>true</code> if the parameter can be proven by the compiler to be a compile-time constant<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>. Yes, the result of this function is dependent on the optimization level!</p>
+<p>This builtin has a very good use case: to implement <code>constexpr</code> <code>offsetof</code>. If you are certain that some expression <code>p</code> is a compile-time constant, you can do <code>constexpr SomeType foo = __builtin_constant_p(p) ? p : p;</code> to forcefully make <code>p</code> a <code>constexpr</code>, even if <code>p</code> is not <code>constexpr</code> by C++ standard, and the compiler won’t complain anything! This allows one to perform <code>constexpr</code> <code>reinterpret_cast</code> between <code>uintptr_t</code> and pointers, thus implement a <code>constexpr</code>-version <code>offsetof</code> operator.</p>
+<p>However, what I realized is that, this builtin can also be used to prevent the unwanted constant propagation. Specifically, we will check <code>if (__builtin_constant_p(d))</code>. If yes, we run the slow-but-correct code – this doesn’t matter as the optimizer is going to constant-fold the code anyway. If not, we execute the fast-but-UB-prone code, which is also fine because we already know the compiler can’t constant-fold anything to trigger the undefined behavior.</p>
+<p>The new version of the code is below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// DON'T USE IT!</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (__builtin_constant_p(d)) &#123;</span><br><span class="line">    <span class="comment">// Run UB-free version, knowing that it's going to </span></span><br><span class="line">    <span class="comment">// be constant-folded by the compiler any way</span></span><br><span class="line">    <span class="keyword">if</span>(<span class="number">-9223372036854775808.0</span> &lt;= d &amp;&amp; d &lt; <span class="number">9223372036854775808.0</span>) &#123;</span><br><span class="line">      <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>I tried the above code on a bunch of constants and non-constant cases, and the result seems good. Either the input is correctly constant-folded, or the good-version assembly is generated.</p>
+<p>So I thought I outsmarted the compiler in this stupid Human-vs-Compiler game. But am I…?</p>
+<h3 id="Don’t-Fight-the-Tool">Don’t Fight the Tool!</h3>
+<p>Why does C/C++ have this undefined behavior after all? Once I start to think about this problem, I begin to realize that something must be wrong…</p>
+<p>The root reason that C/C++ Standard specifies that an out-of-range floating-point-to-integer cast is undefined behavior is because on different architectures, the instruction that performs the float-to-int cast exhibits different behavior when the floating-point value doesn’t fit in the integer type. On x86-64, the behavior of the <code>cvttsd2si</code> instruction in such cases is to produce <code>0x80000000 00000000</code>, which is fine for our use case. But what about the other architectures?</p>
+<p>As it turns out, on ARM64, the semantics of the <code>fcvtzs</code> instruction (analogue of x86-64’s <code>cvttsd2si</code>) is saturation: if the floating-point value is larger than the max value of the integer type, the max value is produced; similarly, if the floating-point value is too small, the minimum integer value is produced. So if the <code>double</code> is larger than <code>2^63-1</code>, <code>fcvtzs</code> will produce <code>2^63-1</code>, not <code>-2^63</code> like in x86-64.</p>
+<p>Now, recall that <code>2^63-1</code> doesn’t have an exact representation in <code>double</code>. When <code>2^63-1</code> is cast to <code>double</code>, it becomes <code>2^63</code>. So if the input <code>double</code> value is <code>2^63</code>, casting it to <code>int64_t</code> (<code>fcvtzs x8, d0</code>) will yield <code>2^63-1</code>, and then casting it back to <code>double</code> (<code>scvtf d1, x8</code>) will yield <code>2^63</code> again. So on ARM64, our code will determine that the <code>double</code> value <code>2^63</code> fits in <code>int64_t</code>, despite that it actually does not.</p>
+<p>I don’t own a ARM64 machine like Apple M1, so I created a virtual machine using <code>QEMU</code> to validate this. Without surprise, on ARM64, our function fails when it is fed the input <code>2^63</code>.</p>
+<p>So clearly, the undefined behavior <em>is</em> there for a reason…</p>
+<h3 id="Conclusion">Conclusion</h3>
+<p>As it turns out, I really should not have tried to outsmart the compiler with weird tricks. If performance is not a concern, then the UB-free version is actually the only portable and correct version:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="number">-9223372036854775808.0</span> &lt;= d &amp;&amp; d &lt; <span class="number">9223372036854775808.0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>And if performance <em>is</em> a concern, then it’s better to simply resort to architecture-dependent inline assembly. Yes, now a different implementation is needed for every architecture, but at least it’s better than dealing with hard-to-debug edge case failures.</p>
+<p>Of course, the ideal solution is to improve the compiler, so that the portable version generates optimal code on every architecture. But given that neither <code>gcc</code> nor <code>clang</code> had supported this, I assume it’s not an easy thing to do.</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>Note that this builtin is different from the C++20 <code>std::is_constant_evaluated()</code>. The <code>is_constant_evaluated</code> only concerns whether a <code>constexpr</code> function is being evaluated constexpr-ly. However, <code>__builtin_constant_p</code> tells you whether a (maybe non-constexpr) expression can be deduced to a compile-time known constant under the current optimization level, so it has nothing to do with <code>constexpr</code> (and in fact, doing <code>constexpr bool foo = __builtin_constant_p(bar)</code> will always give you <code>false</code> if <code>bar</code> is not <code>constexpr</code> because the optimizer haven’t got a chance to simplify <code>bar</code> at the stage of evaluating <code>constexpr</code> expressions). <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl5ry8gkp000eceoo5ba50xy8" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../../06/11/2022-06-11/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Bizarre Performance Characteristics of Alder Lake CPU</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">7</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="">How to check if a real number is an integer in C++?</a>
+        </li>
+      
+        <li>
+          <a href="../../../06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
+        </li>
+      
+        <li>
+          <a href="../../../06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+        </li>
+      
+        <li>
+          <a href="../../../05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+        </li>
+      
+        <li>
+          <a href="../../../04/30/2022-04-30/">The Watchpoint Mechanism in JSC</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>
