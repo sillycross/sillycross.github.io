@@ -14,7 +14,7 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="/images/2022-07-18/output1.png">
 <meta property="article:published_time" content="2022-07-18T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-07-19T09:02:51.519Z">
+<meta property="article:modified_time" content="2022-07-19T09:10:02.379Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="/images/2022-07-18/output1.png">
@@ -181,7 +181,7 @@
 <p>I don’t own a ARM64 machine like Apple M1, so I created a virtual machine using <code>QEMU</code> to validate this. Without surprise, on ARM64, our function fails when it is fed the input <code>2^63</code>.</p>
 <p>So clearly, the undefined behavior <em>is</em> there for a reason…</p>
 <h3 id="Conclusion">Conclusion</h3>
-<p>As it turns out, I really should not have tried to outsmart the compiler with weird tricks. If performance is not a concern, then the UB-free version is actually the only portable and correct version:</p>
+<p>As it turns out, I really should not have tried to outsmart the compiler with weird tricks. If performance is not a concern, then the UB-free version is actually the only portable and correct version<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="number">-9223372036854775808.0</span> &lt;= d &amp;&amp; d &lt; <span class="number">9223372036854775808.0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>And if performance <em>is</em> a concern, then it’s better to simply resort to architecture-dependent inline assembly. Yes, now a different implementation is needed for every architecture, but at least it’s better than dealing with hard-to-debug edge case failures.</p>
 <p>Of course, the ideal solution is to improve the compiler, so that the portable version generates optimal code on every architecture. But given that neither <code>gcc</code> nor <code>clang</code> had supported this, I assume it’s not an easy thing to do.</p>
@@ -191,6 +191,8 @@
 <section class="footnotes">
 <ol class="footnotes-list">
 <li id="fn1" class="footnote-item"><p>Note that this builtin is different from the C++20 <code>std::is_constant_evaluated()</code>. The <code>is_constant_evaluated</code> only concerns whether a <code>constexpr</code> function is being evaluated constexpr-ly. However, <code>__builtin_constant_p</code> tells you whether a (maybe non-constexpr) expression can be deduced to a compile-time known constant under the current optimization level, so it has nothing to do with <code>constexpr</code> (and in fact, doing <code>constexpr bool foo = __builtin_constant_p(bar)</code> will always give you <code>false</code> if <code>bar</code> is not <code>constexpr</code> because the optimizer haven’t got a chance to simplify <code>bar</code> at the stage of evaluating <code>constexpr</code> expressions). <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>By the way, this version didn’t consider the case of <a href="https://en.wikipedia.org/wiki/Signed_zero" target="_blank" rel="noopener">negative zero</a>, another weird thing in floating points. If in your use case, <code>-0</code> must not be considered an integer, you need another special check. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
 </li>
 </ol>
 </section>
@@ -205,7 +207,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/07/18/2022-07-18/" data-id="cl5ry8gkp000eceoo5ba50xy8" class="article-share-link">
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl5ryh1sr000ekiol7h4i1pac" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
