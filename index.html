@@ -177,7 +177,7 @@
 <p>Now, recall that <code>2^63-1</code> doesn’t have an exact representation in <code>double</code>. When <code>2^63-1</code> is cast to <code>double</code>, it becomes <code>2^63</code>. So if the input <code>double</code> value is <code>2^63</code>, casting it to <code>int64_t</code> (<code>fcvtzs x8, d0</code>) will yield <code>2^63-1</code>, and then casting it back to <code>double</code> (<code>scvtf d1, x8</code>) will yield <code>2^63</code> again. So on ARM64, our code will determine that the <code>double</code> value <code>2^63</code> fits in <code>int64_t</code>, despite that it actually does not.</p>
 <p>I don’t own a ARM64 machine like Apple M1, so I created a virtual machine using <code>QEMU</code> to validate this. Without surprise, on ARM64, our function fails when it is fed the input <code>2^63</code>.</p>
 <p>So clearly, the undefined behavior <em>is</em> there for a reason…</p>
-<h3 id="Conclusion">Conclusion</h3>
+<h3 id="Pick-the-Right-Tool-Instead">Pick the Right Tool Instead!</h3>
 <p>As it turns out, I really should not have tried to outsmart the compiler with weird tricks. If performance is not a concern, then the UB-free version is actually the only portable and correct version:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="number">-9223372036854775808.0</span> &lt;= d &amp;&amp; d &lt; <span class="number">9223372036854775808.0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>And if performance <em>is</em> a concern, then it’s better to simply resort to architecture-dependent inline assembly. Yes, now a different implementation is needed for every architecture, but at least it’s better than dealing with hard-to-debug edge case failures.</p>
@@ -202,7 +202,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/07/18/2022-07-18/" data-id="cl5ryjvbp000eg0otexyb7nvs" class="article-share-link">
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl5sxaeid000eiun6edto6g57" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -329,7 +329,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl5ryjvbo000dg0otbty35goa" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl5sxaeic000diun6fdy708cd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1027,7 +1027,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl5ryjvbx000fg0ot13xd9b6c" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl5sxaeij000fiun6hq2u08ml" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1107,7 +1107,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl5ryjvbn000cg0ot83k16q25" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl5sxaeib000ciun68k3wfvso" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1232,7 +1232,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl5ryjvbm000bg0ot0a6k6n92" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl5sxaeia000biun66xb41lwo" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1344,7 +1344,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl5ryjvbk000ag0ot0qb34d28" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl5sxaei9000aiun6g4libig9" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1424,7 +1424,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl5ryjvbi0009g0otbkksfd3w" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl5sxaei80009iun681o3an56" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1509,7 +1509,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl5ryjvbh0008g0ot39lpeswk" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl5sxaei70008iun60ypkh1qp" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1625,7 +1625,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl5ryjvbg0007g0ot3imhgksh" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl5sxaei60007iun68muj9e12" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1735,7 +1735,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl5ryjvbe0006g0otcq2het5p" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl5sxaei30006iun65vcn1ree" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
