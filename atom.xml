@@ -6,7 +6,7 @@
   <link href="atom.xml" rel="self"/>
   
   <link href="localhost:4000/"/>
-  <updated>2022-07-21T00:04:16.691Z</updated>
+  <updated>2022-07-21T00:05:16.687Z</updated>
   <id>localhost:4000/</id>
   
   <author>
@@ -21,14 +21,14 @@
     <link href="2022/07/18/2022-07-18/"/>
     <id>2022/07/18/2022-07-18/</id>
     <published>2022-07-18T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
       
         
         
-    <summary type="html">&lt;p&gt;I have a &lt;code&gt;double&lt;/code&gt; in hand, and I want to know if its value is an integer that fits in a &lt;code&gt;int64_t&lt;/code&gt;. How can I do it</summary>
+    <summary type="html">&lt;p&gt;I have a &lt;code&gt;double&lt;/code&gt;, and I want to know if its value is an integer that fits in a &lt;code&gt;int64_t&lt;/code&gt;. How can I do it in</summary>
         
       
     
@@ -42,7 +42,7 @@
     <link href="2022/06/11/2022-06-11/"/>
     <id>2022/06/11/2022-06-11/</id>
     <published>2022-06-11T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -63,7 +63,7 @@
     <link href="2022/06/02/2022-06-02/"/>
     <id>2022/06/02/2022-06-02/</id>
     <published>2022-06-02T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -84,7 +84,7 @@
     <link href="2022/05/31/2022-05-31/"/>
     <id>2022/05/31/2022-05-31/</id>
     <published>2022-05-31T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -105,7 +105,7 @@
     <link href="2022/04/30/2022-04-30/"/>
     <id>2022/04/30/2022-04-30/</id>
     <published>2022-04-30T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -126,7 +126,7 @@
     <link href="2022/04/26/2022-04-26/"/>
     <id>2022/04/26/2022-04-26/</id>
     <published>2022-04-26T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -147,7 +147,7 @@
     <link href="2022/04/01/2022-04-01/"/>
     <id>2022/04/01/2022-04-01/</id>
     <published>2022-04-01T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -168,7 +168,7 @@
     <link href="2021/10/24/2021-10-24/"/>
     <id>2021/10/24/2021-10-24/</id>
     <published>2021-10-24T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -189,7 +189,7 @@
     <link href="2021/09/20/2021-09-20/"/>
     <id>2021/09/20/2021-09-20/</id>
     <published>2021-09-20T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -210,7 +210,7 @@
     <link href="2021/09/12/2021-09-12/"/>
     <id>2021/09/12/2021-09-12/</id>
     <published>2021-09-12T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -231,7 +231,7 @@
     <link href="2021/09/03/2021-09-03/"/>
     <id>2021/09/03/2021-09-03/</id>
     <published>2021-09-03T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -252,7 +252,7 @@
     <link href="2021/08/23/2021-08-23/"/>
     <id>2021/08/23/2021-08-23/</id>
     <published>2021-08-23T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -273,7 +273,7 @@
     <link href="2021/08/09/2021-08-09/"/>
     <id>2021/08/09/2021-08-09/</id>
     <published>2021-08-09T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       
@@ -294,7 +294,7 @@
     <link href="2021/08/07/2021-08-07/"/>
     <id>2021/08/07/2021-08-07/</id>
     <published>2021-08-07T00:00:00.000Z</published>
-    <updated>2022-07-21T00:04:16.691Z</updated>
+    <updated>2022-07-21T00:05:16.687Z</updated>
     
     
       

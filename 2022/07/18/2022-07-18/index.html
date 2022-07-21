@@ -5,16 +5,16 @@
   
   <title>How to check if a real number is an integer in C++? | </title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="I have a double in hand, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int">
+  <meta name="description" content="I have a double, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int64_t, th">
 <meta property="og:type" content="article">
 <meta property="og:title" content="How to check if a real number is an integer in C++?">
 <meta property="og:url" content="2022/07/18/2022-07-18/index.html">
 <meta property="og:site_name">
-<meta property="og:description" content="I have a double in hand, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int">
+<meta property="og:description" content="I have a double, and I want to know if its value is an integer that fits in a int64_t. How can I do it in C++? Ask any C++ newbie, and you will get an obvious “answer”: cast your double to int64_t, th">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="/images/2022-07-18/output1.png">
 <meta property="article:published_time" content="2022-07-18T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-07-21T00:04:16.691Z">
+<meta property="article:modified_time" content="2022-07-21T00:05:16.687Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="/images/2022-07-18/output1.png">
@@ -128,7 +128,7 @@
 
     <div class="article-entry" itemprop="articleBody">
       
-        <p>I have a <code>double</code> in hand, and I want to know if its value is an integer that fits in a <code>int64_t</code>. How can I do it in C++?</p>
+        <p>I have a <code>double</code>, and I want to know if its value is an integer that fits in a <code>int64_t</code>. How can I do it in C++?</p>
 <p>Ask any C++ newbie, and you will get an obvious “answer”: cast your <code>double</code> to <code>int64_t</code>, then cast it back to <code>double</code>, and compare if it equals your original number.</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>But is it really correct? Let’s test it:</p>
@@ -206,7 +206,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/07/18/2022-07-18/" data-id="cl5u9u2w6000ehkls2fk0ab8y" class="article-share-link">
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl5u9vg3s000enool238p7gff" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->

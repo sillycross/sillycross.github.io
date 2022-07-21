@@ -124,7 +124,7 @@
 
     <div class="article-entry" itemprop="articleBody">
       
-        <p>I have a <code>double</code> in hand, and I want to know if its value is an integer that fits in a <code>int64_t</code>. How can I do it in C++?</p>
+        <p>I have a <code>double</code>, and I want to know if its value is an integer that fits in a <code>int64_t</code>. How can I do it in C++?</p>
 <p>Ask any C++ newbie, and you will get an obvious “answer”: cast your <code>double</code> to <code>int64_t</code>, then cast it back to <code>double</code>, and compare if it equals your original number.</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">IsInt64</span><span class="params">(<span class="keyword">double</span> d)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> d == <span class="keyword">static_cast</span>&lt;<span class="keyword">double</span>&gt;(<span class="keyword">static_cast</span>&lt;<span class="keyword">int64_t</span>&gt;(d));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>But is it really correct? Let’s test it:</p>
@@ -202,7 +202,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/07/18/2022-07-18/" data-id="cl5u9u2w6000ehkls2fk0ab8y" class="article-share-link">
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl5u9vg3s000enool238p7gff" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -329,7 +329,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl5u9u2w5000dhkls7mowe9rj" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl5u9vg3r000dnoold4dsd21z" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1027,7 +1027,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl5u9u2wc000fhkls4r2c7s5l" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl5u9vg45000fnoolftzu7f00" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1107,7 +1107,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl5u9u2w4000chklsb2wldh51" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl5u9vg3q000cnool396ict03" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1232,7 +1232,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl5u9u2w4000bhklsg59808yf" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl5u9vg3p000bnooleazb9q77" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1344,7 +1344,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl5u9u2w3000ahkls2g7dflrs" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl5u9vg3o000anool1zk632m8" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1424,7 +1424,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl5u9u2w10009hkls0z6h360p" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl5u9vg3n0009nool7av5guoh" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1509,7 +1509,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl5u9u2w00008hklsgjakgb7i" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl5u9vg3m0008nool7tx2c1ds" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1625,7 +1625,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl5u9u2vz0007hkls55h39xs1" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl5u9vg3l0007noolhlrc5255" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1735,7 +1735,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl5u9u2vy0006hkls0lg0e40s" class="article-share-link">
+      <a data-url="2021/09/12/2021-09-12/" data-id="cl5u9vg3k0006nooler2yfxya" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
