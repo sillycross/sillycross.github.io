@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Understanding JavaScriptCore&#39;s DFG Optimizing Compiler: IR and Frontend | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="The DFG (Data Flow Graph) optimizing JIT compiler is one of the main performance drivers of JavaScriptCore (JSC), the Javascript engine in WebKit. In this post, we will explore the interesting designs">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Understanding JavaScriptCore&#39;s DFG Optimizing Compiler: IR and Frontend">
+<meta property="og:url" content="draft/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="The DFG (Data Flow Graph) optimizing JIT compiler is one of the main performance drivers of JavaScriptCore (JSC), the Javascript engine in WebKit. In this post, we will explore the interesting designs">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2022-07-31T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-08-02T10:06:33.756Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="page-" class="article article-type-page" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Understanding JavaScriptCore&#39;s DFG Optimizing Compiler: IR and Frontend
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-07-31T00:00:00.000Z" itemprop="datePublished">2022-07-31</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>The DFG (Data Flow Graph) optimizing JIT compiler is one of the main performance drivers of JavaScriptCore (JSC), the Javascript engine in <a href="https://webkit.org/" target="_blank" rel="noopener">WebKit</a>. In this post, we will explore the interesting designs around the intermediate representation (IR) used by DFG, and DFG’s frontend that translates the interpreter bytecode of a Javascript program into the DFG IR.</p>
+<p>Let’s start with some necessary background knowledge.</p>
+<h3 id="The-Purpose-of-the-DFG-Compiler">The Purpose of the DFG Compiler</h3>
+<p>Javascript is a dynamic type langauge, so everything, for example <code>a + b</code>, can have a wild range of behaviors (e.g., number addition, string concatenation, function calls, etc), depending on the runtime type of the operands. This has two implications. First, every operation needs a big switch on the operand types, which is terribly slow. Second, the wild range of behaviors block nearly every optimization: for example, since <code>a + b</code> could end up with a function call, which could literally do anything, there is barely any invariant that the optimizer can deduce for optimization.</p>
+<p>DFG solves the challenge through two techniques: <em>type speculation</em> and <em>OSR exit</em><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>. The crucial observation is the following: in most practical programs, the operand types for a given program site are predictable. For example, it’s rare that an <code>a + b</code> is executed in a loop where <code>a</code> is sometimes a number, sometimes a string, and sometimes an object.</p>
+<p>This is where <em>type speculation</em> comes in. If we speculate that an <code>a + b</code> at a program site is likely a numeric add, we only <em>check</em> at runtime that <code>a</code> and <code>b</code> are numbers, instead of running a big switch. If the check fails at runtime (which is unlikely), we will bail out from the optimized program, and continue execution in interpreter – this is called an <em>OSR exit</em>.</p>
+<p>It’s important to note that an <em>OSR exit</em> is different from a slow path: in an OSR exit, we bail out from the optimized code and never return to it. This solves the second challenge above, as the compiler is safe to do optimizations after <code>a + b</code> based on the assumption that <code>a + b</code> is a numeric add (so that it knows <code>a</code> and <code>b</code> must be numeric, and <code>a + b</code> has no side effects, for example): if the assumption turns out to be false at runtime, since we will bail out from the code, none of the later code relying on the false assumption will be executed.</p>
+<p>Type speculation and OSR exit open up opportunities for more optimizations. For example, consider <code>c = a + b; d = a + c</code>. If <code>a + b</code> is speculated to be a numeric add, we know for sure <code>a</code>, <code>b</code> and <code>c</code> must be numbers after the operation (as otherwise we would have OSR-exited). So now we know for sure the expression <code>a + c</code> is also a numeric add, so it needs no type check at all.</p>
+<p>However, OSR exit poses unique challenges to DFG’s design. Specifically, at every point where an OSR exit is possible, we must know where in the interpreter<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup> we should jump to and continue execution so that all program semantics are preserved, and how we can transform the optimized function’s stack frame to exactly the layout expected by the interpreter at that specific point. Therefore, DFG needs to generate OSR exit information (which are called <em>stackmaps</em> in JSC) for each potential OSR exit point. How DFG handles OSR exit will be one of the central topics of this post.</p>
+<p>Another design requirement for the DFG IR is performance. The optimized code cannot run until it is generated, so one must balance compilation time and execution performance. JSC employs a four-tier strategy – interpreter, baseline compiler, the DFG compiler, and the FTL compiler, with each tier having a longer compilation time than the previous tier, but also generates better code. As the third tier in the hierarchy, the DFG compiler is supposed to compile fast while also producing decent code, leaving only the most heavyweight and time-consuming optimizations to the FTL tier. Therefore, the DFG IR must be fast to construct and transform (so that compilation is fast), while also exposing a lot of optimization opportunities (so that the generated code is good).</p>
+<p>Finally, DFG’s design needs to support tiering-up. There are two cases:</p>
+<ol>
+<li>The baseline tier needs to tier up to DFG when the code becomes hot enough. Normally this happens at function level (when a call happens, if the callee has a DFG-compiled version, it will be executed), but JSC also supports entering a DFG-compiled function at a loop entry. That is, a function can be originally executing in baseline tier, but when the DFG-compiled code becomes ready, at the start of an outer-most loop, one can jump into the middle of the DFG-compiled code and continue execution in the DFG tier<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</li>
+<li>The DFG tier itself needs to tier up to the FTL tier, and similar to above, this can also happen at both function entry and loop entry.</li>
+</ol>
+<p>For the purpose of this post, however, we can safely ignore the complexities from tiering-up as they have little to do with the design of the DFG IR and the frontend.</p>
+<h3 id="The-Interpreter-Bytecode">The Interpreter Bytecode</h3>
+<p>To run a Javascript program, the first step is to invoke the parser to translate the program into a bytecode representation. JSC’s bytecode is <a href="https://en.wikipedia.org/wiki/Register_machine" target="_blank" rel="noopener">register-based</a>: each function’s call frame is essentially a vector of “slots”, with each slot (aka, virtual register) holding a Javascript value – be it a number, a string, an object, a function, and so on. Each bytecode instruction reads its inputs from the slots and writes its outputs into the slots. For example, an <code>Add</code> bytecode with <code>lhs=0</code>, <code>rhs=1</code>, and <code>output=2</code> will read the left-hand-side operand from slot <code>0</code>, the right-hand-side operand from slot <code>1</code>, perform the addition, and write the result into slot <code>2</code>.</p>
+<p>The real situation is slightly more complex:</p>
+<ol>
+<li>We need somewhere to store the arguments, and since Javascript supports <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/rest_parameters" target="_blank" rel="noopener">variadic arguments</a>, we can’t statically know how many arguments we have. So if we simply store the arguments starting at slot <code>0</code>, we won’t be able to safely write any slot without risking clobbering some argument. To solve this problem, in JSC, the arguments are stored using the negative slot indices.</li>
+<li>The call frame needs to store some <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/interpreter/CallFrame.h.html#JSC::CallFrameSlot" target="_blank" rel="noopener">more information</a>, such as what function it is running, where its caller’s call frame is, which bytecode in the caller’s bytecode sequence it should returns to, etc. So each call frame also has a <code>CallFrameHeader</code> to store those information, which sits between the negative slot indices for arguments and the non-negative slot indices for locals.</li>
+</ol>
+<p>Conceptually, each call frame of a Javascript function looks like below:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Slot #  | ..  -4 | -3 | -2 | -1 | CallFrameHeader  |  0  |  1    ..</span><br><span class="line">Meaning | .. arg4 arg3 arg2 arg1  prev    ...      local0 local1 ..</span><br><span class="line">                                    | (other info) ^</span><br><span class="line">&lt;-- points to caller&#39;s call frame --&#x2F;       call frame pointer</span><br></pre></td></tr></table></figure>
+<p>That is, the call frame pointer points at slot <code>0</code>. The <code>CallFrameHeader</code> sits right before slot <code>0</code>, and all the arguments are stored right before the <code>CallFrameHeader</code> in reversed order. Notably, the header contains a pointer to the caller’s call frame, so one can walk through every call frame in the stack by chasing that pointer.</p>
+<p>The bytecode representation is the <em>single source of truth</em> of a Javascript program. Moreover, since a call frame (or a stack of call frames) is merely a vector of slots, this allows the optimizing compiler to easily reconstruct the call frame(s) that are expected by the interpreter, facilitating the implementation of OSR exit – a must need for the DFG and FTL compiler.</p>
+<p>Now we are ready to explore the design of the DFG compiler frontend. JSC is a method JIT, so the compiler takes the function to compile, and generates the executable code for that function. The DFG frontend is responsible for transforming the JSC bytecode of the input function to DFG IR, which is subsequently passed to the DFG optimizer.</p>
+<h3 id="The-Inliner">The Inliner</h3>
+<p>Function inlining is a critical optimization for any object oriented language to optimize away the OOP abstractions. In DFG, it is the frontend’s responsibility to make the inlining decisions and perform the inlining. That is, the <code>Call</code> bytecodes that the frontend decides to inline are gone in the generated DFG IR: you will not see the call, but only the DFG IR of the inlined functions. Inlining can be nested: functions called by an inlined function can also be inlined, up to a certain depth limit.</p>
+<p>In a modern dynamic language like Javascript, however, since functions are first-class value, there is generally no way to statically know which function the code is calling. For example, when one writes <code>f()</code>, one is actually reading the value of the global variable <code>f</code> and then attempt to call that value. <code>f</code> could change value, and could be holding any value, including non-function values like <code>123</code>.</p>
+<p>Therefore, inlining has to be speculative. For bytecode instructions that are perceived as reasonable to perform a call<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>, such as the <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/Opcode.h.html#_M/FOR_EACH_OPCODE_WITH_LLINT_CALL_LINK_INFO" target="_blank" rel="noopener">various</a> <code>Call</code> bytecodes, or object access that ends up calling <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/get" target="_blank" rel="noopener">getters and setters</a>, the bytecode will record the list of different callees it has seen during execution in the interpreter tier and the baseline JIT tier. This is called <em>inline caching</em>: it not only allows DFG to make an educated speculation on the callee, but is also an important optimization on its own (though we won’t dive into it in this post). When DFG encounters such a bytecode that qualifies for inlining, it will inspect its inline cache to retrieve the observed callees. The list of call kinds that DFG considers for inlining can be found <a href="https://sillycross.github.io/r/WebKit/JavaScriptCore/PrivateHeaders/JavaScriptCore/InlineCallFrame.h.html#JSC::InlineCallFrame::Kind" target="_blank" rel="noopener">here</a>.</p>
+<p>Now, there is another complexity. In Javascript, a function is really a function object, or a <em>closure</em>, as it captures the environment it was created in. So a function object contains:</p>
+<ol>
+<li>The actual Javascript code to be called.</li>
+<li>The global environment associated with this closure.</li>
+<li>The lexical environment captured by this closure.</li>
+</ol>
+<p>In JSC, each <code>(Code, GlobalEnv)</code> pair is represented by a <code>CodeBlock</code> (we simplified away some Javascript quirks here, see footnote<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>). For a given call site, DFG will consider inlining the callee in two cases:</p>
+<ol>
+<li>The observed callee is always the same function object.</li>
+<li>The observed callees are different function objects, but share the same <code>CodeBlock</code> (this is common for the function factory pattern).</li>
+</ol>
+<p>For case 1, we need to check that the function object is our expected one, and OSR exit if the check fails. For case 2, we need to check that the <code>CodeBlock</code> stored in the function object is our expected one, and OSR exit if the check fails (note that case 1 is cheaper than case 2 since there is one less pointer dereference in the check, which is why we want to have two cases). Getters and setters are more complex as they need additional checks to ensure that the object access indeed results in the corresponding getter/setter call. Thanks to the check and the OSR exit, we know that the inlined code won’t be executed unless the callee is indeed the one we expected, so we can safely inline the callee’s bytecode now.</p>
+<p>Note that in both cases, the call ultimately ends up executing the same piece of Javascript code (though in case 2, the captured lexical environment can be different per call). Call sites that have observed more than one Javascript callees <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp.html#2123" target="_blank" rel="noopener">will not be inlined</a>. This is because DFG is positioned as a fast compiler. Emitting a branch and inlining multiple potential callees is technically possible, but would bloat up the code too much, which is not worthy in general.</p>
+<p>Even if we have inlined a function, however, we still need to know that we are in an inlined function in some cases. First, exception handlers and stack tracers need to walk the stack, which must see the identical stack trace as the non-optimized version. Second, an OSR exit can happen inside an inlined function (or a nested inlined function, since inlining can be nested). In that case, we need to restore the stack layout to the uninlined version exactly as expected by the interpreter and baseline JIT before we can bail out.</p>
+<p>Fortunately, this is simplified by the fact that the stack can be simply viewed as a vector of slots. Therefore, we can translate the slot number in the callee’s bytecode into the slot number of the caller’s call frame, by simply adding a proper offset (this includes the callee’s <code>CallFrameHeader</code>, which can also be viewed as a few slots). For example, for a caller with <code>5</code> locals (slot <code>0</code> to <code>4</code>) and a callee taking <code>3</code> arguments, reference to the first, second, and third argument of the callee can be translated to slot <code>7</code>, <code>6</code>, <code>5</code> in the caller’s call frame respectively (look at the call frame layout in the previous section if you are confused). This allows us to generate OSR exit information that is oblivious to inlining: the DFG frontend only emits information like “value <code>X</code> should be stored into slot number <code>Y</code> in the call frame when this OSR exit point triggers”, while the slot number <code>Y</code> could be actually an argument, a <code>CallFrameHeader</code> member, or a local of some arbitrarily deeply nested inlined function. This translation hides the complexity of inlining from the OSR exit logic and the rest of the DFG compiler, greatly simplifying things. We will explain how exactly the OSR exit information is generated and stored in the DFG IR in more detail later.</p>
+<p>To summarize, after we emit the callee check, we need to fill the callee’s <code>CallFrameHeader</code> by generating DFG IR that writes proper information to the slot numbers which correspond to the callee’s <code>CallFrameHeader</code> (for example, see <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp.html#1693" target="_blank" rel="noopener">here</a>), so that the exception handlers and stack tracers can see the correct stack trace<sup class="footnote-ref"><a href="#fn6" id="fnref6">[6]</a></sup>. Note that the DFG optimizer is unaware of the stack walkers, so the write is also annotated as an <code>ImmediateNakedSet</code>, which prevents the DFG optimizer from optimizing it away or otherwise doing funny optimizations around it. We can then translate the callee’s bytecode to DFG IR, with the extra caution that when we generate OSR exit information inside the callee, we must translate the callee’s slot number to the caller’s slot number.</p>
+<p>As always, the real story is more complex.</p>
+<p>First, Javascript supports variadic arguments. Since we cannot statically know how many arguments we might have at runtime, we cannot statically translate the callee’s slot number into the caller’s slot number for OSR exit information. To solve this problem perfectly, we would need to make the OSR exit information aware of the number of variadic arguments at runtime and the inlining stack at every OSR exit point. This is way too complex for such a minor feature, so DFG made compromise instead. When it encounters a variadic function callee, it will set a limit on the maximum allowed number of variadic arguments based on profiling information. It then emits a runtime check, which OSR exit if the number of variadic arguments at runtime exceeds the limit. Now we have a statically known upper bound on the number of arguments, so we can translate the slot numbers again.</p>
+<p>Second, Javascript supports <em>proper tail calls</em>. That is, the stack is guaranteed to have a bounded size no matter how many tail calls are executed. DFG supports inlining tail calls, but we will ignore this detail for simplicity.</p>
+<p>Finally, having explained <em>how</em> to do inlining, it’s time to explain <em>when</em> to do inlining.</p>
+<p>DFG has not yet supported inlining for all Javascript features. So if a callee used <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGCapabilities.cpp.html#_ZN3JSC3DFG15capabilityLevelENS_8OpcodeIDEPNS_9CodeBlockEPKNS_11InstructionE" target="_blank" rel="noopener">such features</a> (for example, <code>yield</code>), it clearly cannot be inlined.</p>
+<p>Beside that, it turns out that DFG’s strategy is surprisingly simple. For each function (before any inlining), define its “bytecode cost” as the total number of operands in the function’s bytecode. Then everything will be inlined as long as the following requirement is met:</p>
+<ol>
+<li>A function cannot be inlined if its bytecode cost is <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp.html#_ZN3JSC3DFG14ByteCodeParser18getInliningBalanceERKNS_14CallLinkStatusENS_22CodeSpecializationKindE" target="_blank" rel="noopener">&gt;100 or 120</a>, depending on situation.</li>
+<li>Nested inlining has a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp.html#1634" target="_blank" rel="noopener">depth limit of 4</a>.</li>
+<li>Each function can only recursively inline itself <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp.html#1641" target="_blank" rel="noopener">at most once</a>.</li>
+<li>A function cannot inline any callee if its own bytecode cost is <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/dfg/DFGCapabilities.h.html#_ZN3JSC3DFG29isSmallEnoughToInlineCodeIntoEPNS_9CodeBlockE" target="_blank" rel="noopener">&gt;10000</a>.</li>
+</ol>
+<h3 id="The-DFG-IR">The DFG IR</h3>
+<p>The IR in DFG is very similar to the well-known <a href="https://en.wikipedia.org/wiki/Static_single_assignment_form" target="_blank" rel="noopener">SSA representation</a>, but there are some intentional deviations to better match DFG’s purpose as a fast compiler. Similar to SSA, each function is represented as a list of <a href="https://en.wikipedia.org/wiki/Basic_block" target="_blank" rel="noopener">basic blocks</a>, and each basic block contains a list of IR instructions. An IR instruction is also implicitly the SSA value it produces, and can be used as input to other IR instructions. However, unlike SSA, in DFG’s IR:</p>
+<ol>
+<li>The SSA value produced by an IR instruction can only be used by IR instructions in the <strong>same</strong> basic block.</li>
+<li>DFG does not have an IR instruction named “Phi”. Instead, in DFG’s IR, each function has a list of “slots”, which are local variables that one can read from and write to. There are two IR instructions <code>GetLocal</code> and <code>SetLocal</code> which allows reading/writing a slot respectively.</li>
+</ol>
+<p>As one would expect, a <code>GetLocal</code> takes a slot number constant as operand, and produces an SSA value. A <code>SetLocal</code> takes an SSA value and a slot number constant as operands, and produces nothing.</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>OSR stands for <em>on-stack replacement</em>, a technique historically used by debuggers, but later found applications elsewhere, for example in the speculative JIT compilers here. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>In fact, we generally OSR-exit to the code generated by the baseline compiler, not the interpreter. But for the purpose of this post, we will ignore this complexity, as the baseline compiler uses the same stack layout as the interpreter, and talking about the interpreter is much easier to understand. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>In JSC, tiering up at the start of a loop (instead of normally at function entry) has its own terminology called <em>OSR Entry</em>. It is also known as <em>hot loop transfer</em>. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>In Javascript, almost every operation can end up calling some function. However, most of them are exotic and hardly seen in practice, so JSC does not optimize for such cases. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>In Javascript, a function can be called either directly (<code>forCall</code> in JSC jargon), or through the <code>new</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new" target="_blank" rel="noopener">operator</a> (<code>forConstruct</code> in JSC jargon), and the two exhibits different behavior on the <code>this</code> variable. So in fact, one needs to use two different <code>CodeBlock</code>s to represent the normal-call case and the <code>new</code>-operator-call case. This is encapsulated by the class <code>FunctionExecutable</code>, which contains the <a href="https://sillycross.github.io/r/WebKit/JavaScriptCore/PrivateHeaders/JavaScriptCore/FunctionExecutable.h.html#JSC::FunctionExecutable::m_codeBlockForCall" target="_blank" rel="noopener">two</a> <code>CodeBlock</code>s. A function object in JSC stores the <code>FunctionExecutable</code> and its captured lexical environment. When a function object is called, one needs to use the correct <code>CodeBlock</code> in the <code>FunctionExecutable</code> based on whether the call is a normal call or a <code>new</code> operator call. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn6" class="footnote-item"><p>Note that not all fields in <code>CallFrameHeader</code> are populated: only the fields required by the exception handler and stack tracer to walk the stack are populated. The rest of the fields still must be populated in case of an OSR exit: this is accomplished by emitting proper OSR exit information to populate those slots at OSR exit. <a href="#fnref6" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="draft/index.html" data-id="cl6c0oc8o0003f9nc1xcf3aqs" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">7</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="../2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
+        </li>
+      
+        <li>
+          <a href="../2022/06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
+        </li>
+      
+        <li>
+          <a href="../2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+        </li>
+      
+        <li>
+          <a href="../2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+        </li>
+      
+        <li>
+          <a href="../2022/04/30/2022-04-30/">The Watchpoint Mechanism in JSC</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../fancybox/jquery.fancybox.css">
+
+  
+<script src="../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>
