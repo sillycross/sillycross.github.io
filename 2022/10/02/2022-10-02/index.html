@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="I recently hit the following use case in my project: I have a function RunAllPasses(obj), which runs a list of transformation passes on obj. All passes are independent from each other, so one can run">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism">
+<meta property="og:url" content="2022/10/02/2022-10-02/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="I recently hit the following use case in my project: I have a function RunAllPasses(obj), which runs a list of transformation passes on obj. All passes are independent from each other, so one can run">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2022-10-02T00:00:00.000Z">
+<meta property="article:modified_time" content="2022-10-03T06:47:45.697Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../../../../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../../../../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../../../../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../../../../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../../../../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../../../../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-2022-10-02" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2022-10-02T00:00:00.000Z" itemprop="datePublished">2022-10-02</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>I recently hit the following use case in my project: I have a function <code>RunAllPasses(obj)</code>, which runs a list of transformation passes on <code>obj</code>. All passes are independent from each other, so one can run them in any order. The problem is, I want to easily add new passes to the list of passes.</p>
+<p>Of course one can manually maintain the list of passes, and call each of them. But this results in quite a bit of boilerplate code needed for each pass, and a lot of header files with each file merely having one function declaration for the pass.</p>
+<p>Can we have less boilerplate code?</p>
+<p>One intuitive direction is to have each pass “register” itself into a pass list at program initialization time, through the help of a global variable. For example, if one writes</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WARNING: It's probably not a good idea to use this...</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">RegisterMyPass</span> &#123;</span></span><br><span class="line">  RegisterMyPass() &#123;</span><br><span class="line">    g_allPasses.push_back(MyPass);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line">RegisterMyPass g_registerMyPass;</span><br></pre></td></tr></table></figure>
+<p>Then the constructor of <code>g_registerMyPass</code> would automatically run when the program starts, and push the pass into a global pass list. The <code>RunAllPasses</code> function can then simply run each pass in the pass list.</p>
+<p>However, this approach turns out to be the source of a stream of problems, which ultimately forced me to give up this approach. Long story short, let’s start with the experiment that led me to my conclusion.</p>
+<h4 id="Linker-The-Deal-Breaker">Linker: The Deal-Breaker</h4>
+<p>Create a mini project with two C++ files, <code>a.cpp</code> and <code>b.cpp</code>.</p>
+<p><code>a.cpp</code> simply declares a global variable that has a constructor, which prints a message:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In constructor S\n"</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Declare global variable 's'</span></span><br><span class="line"><span class="keyword">inline</span> S s;</span><br></pre></td></tr></table></figure>
+<p><code>b.cpp</code> is just the <code>main()</code> function:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"In main\n"</span>);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Now, run the program (the compiler and linker doesn’t matter, at least for the few I tried):</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">clang++ a.cpp -c -std=c++17</span><br><span class="line">clang++ b.cpp -c -std=c++17</span><br><span class="line">clang++ a.o b.o</span><br><span class="line">./a.out</span><br></pre></td></tr></table></figure>
+<p>and we get the expected output of <code>In constructor S</code> followed by <code>In main</code>. This shows that the C++ compiler indeed took care to preserve the global variable <code>s</code> from being pruned by the linker even if it is unused, which is good.</p>
+<p>But if we make <code>a.cpp</code> a library, things break!</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">clang++ a.cpp -c -std=c++17</span><br><span class="line">ar r mylib.a a.o</span><br><span class="line">clang++ b.cpp -c -std=c++17</span><br><span class="line">clang++ b.o mylib.a</span><br><span class="line">./a.out</span><br><span class="line"><span class="comment"># The 'In constructor S' line won't be printed!</span></span><br></pre></td></tr></table></figure>
+<p>What’s the problem? As it turns out, if none of the symbols in some <em>file</em> <code>X</code> of a static library is directly referenced by the main program, then the file <code>X</code> won’t be linked into the main program at all. And this “file-level pruning” ignores whatever “do-not-prune” annotation emitted by the C++ compiler, since the file is not linked in altogether.</p>
+<p>For example, if we change the code a bit, so that <code>b.cpp</code> uses a function defined in <code>a.cpp</code>:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// a.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In constructor S\n"</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Declare global variable 's'</span></span><br><span class="line"><span class="keyword">inline</span> S s;</span><br><span class="line"><span class="comment">// Declare a function used by b.cpp</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span> </span>&#123; <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In function f\n"</span>);</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// b.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"In main\n"</span>);</span><br><span class="line">  f();</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>Then, magically, the <code>In constructor S</code> line would be printed out again.</p>
+<p>So I reached the conclusion that this approach is fundamentally fragile:</p>
+<ol>
+<li>The irratic behavior won’t show up if the global variable is defined in an object file, only when it is defined in static libraries.</li>
+<li>The irratic behavior won’t show up if the C++ file defining the global variable contains other declarations that is used by the main program.</li>
+<li>There is no way (AFAIK) to fix this problem other than the <code>-Wl,--whole-archive</code> linker flag, which is not only fragile, but also a bad option because it unnecessarily bloats the final executable by often a lot.</li>
+</ol>
+<p>The strict triggering condition means that the irratic behavior can hide undiscovered for a long time, until it is exposed by some completely irrelevant changes (e.g., moving a file to a static library, or moving some code around) and cause a debugging nightmare.</p>
+<p>During the process, I also learned a number of C++-standard-imposed pitfalls about global variable constructor. I will only note one interesting example below.</p>
+<p>The following code has undefined behavior, can you see why?</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">std</span>::<span class="built_in">map</span>&lt;<span class="keyword">int</span>&gt; g_list;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    g_list.insert(<span class="number">123</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">static</span> <span class="keyword">inline</span> S r;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Instantiate, say, S&lt;int&gt;</span></span><br></pre></td></tr></table></figure>
+<p>Answer: at the time the constructor of <code>r</code> runs, the constructor of <code>g_list</code> may not have run.</p>
+<p>This is because <a href="https://timsong-cpp.github.io/cppwp/basic.start#dynamic-3.1" target="_blank" rel="noopener">according to C++ standard</a>, “dynamic initialization of a non-block variable with static storage duration is unordered if the variable is an implicitly or explicitly instantiated specialization” (in our case, any instantiation of the variable <code>r</code>). Since <code>std::map</code> does not have a <code>constexpr</code> constructor, <code>g_list</code> is also dynamically initialized, so <code>r</code> may be initialized before <code>g_list</code>, even if <code>g_list</code> “appears” to be defined before <code>r</code>.</p>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/10/02/2022-10-02/" data-id="cl8sevkf7000gduomds0ze67r" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../../07/18/2022-07-18/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">How to check if a real number is an integer in C++?</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">8</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+        </li>
+      
+        <li>
+          <a href="../../../07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
+        </li>
+      
+        <li>
+          <a href="../../../06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
+        </li>
+      
+        <li>
+          <a href="../../../06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+        </li>
+      
+        <li>
+          <a href="../../../05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2022 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
+
+  
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../../../../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

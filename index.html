@@ -98,6 +98,93 @@
         <div class="col-sm-8 blog-main">
           
   
+    <article id="post-2022-10-02" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="2022/10/02/2022-10-02/" class="article-date"><time datetime="2022-10-02T00:00:00.000Z" itemprop="datePublished">2022-10-02</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>I recently hit the following use case in my project: I have a function <code>RunAllPasses(obj)</code>, which runs a list of transformation passes on <code>obj</code>. All passes are independent from each other, so one can run them in any order. The problem is, I want to easily add new passes to the list of passes.</p>
+<p>Of course one can manually maintain the list of passes, and call each of them. But this results in quite a bit of boilerplate code needed for each pass, and a lot of header files with each file merely having one function declaration for the pass.</p>
+<p>Can we have less boilerplate code?</p>
+<p>One intuitive direction is to have each pass “register” itself into a pass list at program initialization time, through the help of a global variable. For example, if one writes</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WARNING: It's probably not a good idea to use this...</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">RegisterMyPass</span> &#123;</span></span><br><span class="line">  RegisterMyPass() &#123;</span><br><span class="line">    g_allPasses.push_back(MyPass);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line">RegisterMyPass g_registerMyPass;</span><br></pre></td></tr></table></figure>
+<p>Then the constructor of <code>g_registerMyPass</code> would automatically run when the program starts, and push the pass into a global pass list. The <code>RunAllPasses</code> function can then simply run each pass in the pass list.</p>
+<p>However, this approach turns out to be the source of a stream of problems, which ultimately forced me to give up this approach. Long story short, let’s start with the experiment that led me to my conclusion.</p>
+<h4 id="Linker-The-Deal-Breaker">Linker: The Deal-Breaker</h4>
+<p>Create a mini project with two C++ files, <code>a.cpp</code> and <code>b.cpp</code>.</p>
+<p><code>a.cpp</code> simply declares a global variable that has a constructor, which prints a message:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In constructor S\n"</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Declare global variable 's'</span></span><br><span class="line"><span class="keyword">inline</span> S s;</span><br></pre></td></tr></table></figure>
+<p><code>b.cpp</code> is just the <code>main()</code> function:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"In main\n"</span>);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Now, run the program (the compiler and linker doesn’t matter, at least for the few I tried):</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">clang++ a.cpp -c -std=c++17</span><br><span class="line">clang++ b.cpp -c -std=c++17</span><br><span class="line">clang++ a.o b.o</span><br><span class="line">./a.out</span><br></pre></td></tr></table></figure>
+<p>and we get the expected output of <code>In constructor S</code> followed by <code>In main</code>. This shows that the C++ compiler indeed took care to preserve the global variable <code>s</code> from being pruned by the linker even if it is unused, which is good.</p>
+<p>But if we make <code>a.cpp</code> a library, things break!</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">clang++ a.cpp -c -std=c++17</span><br><span class="line">ar r mylib.a a.o</span><br><span class="line">clang++ b.cpp -c -std=c++17</span><br><span class="line">clang++ b.o mylib.a</span><br><span class="line">./a.out</span><br><span class="line"><span class="comment"># The 'In constructor S' line won't be printed!</span></span><br></pre></td></tr></table></figure>
+<p>What’s the problem? As it turns out, if none of the symbols in some <em>file</em> <code>X</code> of a static library is directly referenced by the main program, then the file <code>X</code> won’t be linked into the main program at all. And this “file-level pruning” ignores whatever “do-not-prune” annotation emitted by the C++ compiler, since the file is not linked in altogether.</p>
+<p>For example, if we change the code a bit, so that <code>b.cpp</code> uses a function defined in <code>a.cpp</code>:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// a.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In constructor S\n"</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Declare global variable 's'</span></span><br><span class="line"><span class="keyword">inline</span> S s;</span><br><span class="line"><span class="comment">// Declare a function used by b.cpp</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span> </span>&#123; <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In function f\n"</span>);</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// b.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"In main\n"</span>);</span><br><span class="line">  f();</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>Then, magically, the <code>In constructor S</code> line would be printed out again.</p>
+<p>So I reached the conclusion that this approach is fundamentally fragile:</p>
+<ol>
+<li>The irratic behavior won’t show up if the global variable is defined in an object file, only when it is defined in static libraries.</li>
+<li>The irratic behavior won’t show up if the C++ file defining the global variable contains other declarations that is used by the main program.</li>
+<li>There is no way (AFAIK) to fix this problem other than the <code>-Wl,--whole-archive</code> linker flag, which is not only fragile, but also a bad option because it unnecessarily bloats the final executable by often a lot.</li>
+</ol>
+<p>The strict triggering condition means that the irratic behavior can hide undiscovered for a long time, until it is exposed by some completely irrelevant changes (e.g., moving a file to a static library, or moving some code around) and cause a debugging nightmare.</p>
+<p>During the process, I also learned a number of C++-standard-imposed pitfalls about global variable constructor. I will only note one interesting example below.</p>
+<p>The following code has undefined behavior, can you see why?</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">std</span>::<span class="built_in">map</span>&lt;<span class="keyword">int</span>&gt; g_list;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    g_list.insert(<span class="number">123</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">static</span> <span class="keyword">inline</span> S r;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Instantiate, say, S&lt;int&gt;</span></span><br></pre></td></tr></table></figure>
+<p>Answer: at the time the constructor of <code>r</code> runs, the constructor of <code>g_list</code> may not have run.</p>
+<p>This is because <a href="https://timsong-cpp.github.io/cppwp/basic.start#dynamic-3.1" target="_blank" rel="noopener">according to C++ standard</a>, “dynamic initialization of a non-block variable with static storage duration is unordered if the variable is an implicitly or explicitly instantiated specialization” (in our case, any instantiation of the variable <code>r</code>). Since <code>std::map</code> does not have a <code>constexpr</code> constructor, <code>g_list</code> is also dynamically initialized, so <code>r</code> may be initialized before <code>g_list</code>, even if <code>g_list</code> “appears” to be defined before <code>r</code>.</p>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="2022/10/02/2022-10-02/" data-id="cl8sevkf7000gduomds0ze67r" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-2022-07-18" class="article article-type-post" itemscope itemprop="blogPost">
 
   <header class="article-header">
@@ -202,7 +289,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/07/18/2022-07-18/" data-id="cl6ki3vdw000fc6oje07u18n3" class="article-share-link">
+      <a data-url="2022/07/18/2022-07-18/" data-id="cl8sevkf6000fduomcqtk32ko" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -329,7 +416,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/11/2022-06-11/" data-id="cl6ki3vdv000ec6ojcmkh4o3v" class="article-share-link">
+      <a data-url="2022/06/11/2022-06-11/" data-id="cl8sevkf5000eduom8qya6v6c" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1027,7 +1114,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/06/02/2022-06-02/" data-id="cl6ki3ve3000gc6oj9w9paepj" class="article-share-link">
+      <a data-url="2022/06/02/2022-06-02/" data-id="cl8sevkfc000hduom8g358eb9" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1107,7 +1194,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/05/31/2022-05-31/" data-id="cl6ki3vdt000dc6ojgjpvhqyn" class="article-share-link">
+      <a data-url="2022/05/31/2022-05-31/" data-id="cl8sevkf4000dduomdo6taddz" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1232,7 +1319,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/30/2022-04-30/" data-id="cl6ki3vds000cc6oj05ks0g2v" class="article-share-link">
+      <a data-url="2022/04/30/2022-04-30/" data-id="cl8sevkf3000cduom5ajwg55u" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1344,7 +1431,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/26/2022-04-26/" data-id="cl6ki3vdr000bc6oj8j8bag7x" class="article-share-link">
+      <a data-url="2022/04/26/2022-04-26/" data-id="cl8sevkf2000bduom7p80d6kd" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1424,7 +1511,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/04/01/2022-04-01/" data-id="cl6ki3vdq000ac6oj5ejdd8cn" class="article-share-link">
+      <a data-url="2022/04/01/2022-04-01/" data-id="cl8sevkf1000aduomecko4onf" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1509,7 +1596,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/10/24/2021-10-24/" data-id="cl6ki3vdo0009c6oj1ho82z88" class="article-share-link">
+      <a data-url="2021/10/24/2021-10-24/" data-id="cl8sevkf00009duom9sgw13cs" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1625,117 +1712,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="2021/09/20/2021-09-20/" data-id="cl6ki3vdm0008c6oj2bij2o68" class="article-share-link">
-        <i class="fa fa-share"></i> Share
-      </a>
-    -->
-      
-      
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-2021-09-12" class="article article-type-post" itemscope itemprop="blogPost">
-
-  <header class="article-header">
-    
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="2021/09/12/2021-09-12/">Static Analysis in JavaScriptCore (Part I)</a>
-    </h1>
-  
-
-
-  </header>
-
-  <div class="article-meta">
-    <div class="article-datetime">
-  <a href="2021/09/12/2021-09-12/" class="article-date"><time datetime="2021-09-12T00:00:00.000Z" itemprop="datePublished">2021-09-12</time></a>
-</div>
-
-    
-    
-
-  </div>
-  <div class="article-inner">
-
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>Recently I’ve been spending time to understand some internals of JavaScriptCore (JSC), the Javascript JIT compiler powering the Safari browser. For background knowledge, I strongly recommend <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">this great article from WebKit blog</a> for a detailed overview of JSC.</p>
-<p>This series of posts attempts to dive deeper into a specific area of JSC: the static analysis passes in JSC’s DFG JIT. Since Javascript is a highly dynamic langauge, it is critical to obtain as much type information as possible to better understand program behaviors so optimizations can take place. In JSC, static analysis is the primary tool for this purpose.</p>
-<!--
-As explained in the WebKit blog article, there are three most powerful static analysis passes: 
-1. Prediction propagation, which fills in speculated types of all values based on the runtime profile of some values. 
-2. Abstract interpreter, which, among other things, allows identifying redundant type speculation checks.
-3. Clobberize, which as the name suggests, performs alias analysis. It allows elimination of redundant loads and code motion. 
--->
-<p>The WebKit blog article gave a good overview of the analysis passes. However, since static analyses are hueristic algorithms, the concrete algorithm design is as important as (if not more important than) the high-level idea to yield a working solution. I’m also curious about the other static analysis passes performed by JSC that are not covered in the article.</p>
-<p>So I decided to dive into the implementation to get a better understanding of the full picture. This turns out to be much harder than I expected, primarily due to the lack of comments in the codebase. So I’m taking notes here for future reference.</p>
-<blockquote>
-<p><strong>Disclaimer</strong><br>
-I do not work on JavaScriptCore, my experience with Javascript is very limited, and I do not have prior experience on static analysis. Everything described in this post is from my understanding of the JSC source code. They may be inaccurate or outright wrong. Please feel free to email me at haoranxu510 [at] gmail.com for any corrections and discussions.</p>
-</blockquote>
-<h3 id="Specialized-DFG-IR-Node-Type">Specialized DFG IR Node Type</h3>
-<p>The first optimization is not an optimization pass, but happens when the DFG IR is generated from the source-of-truth bytecode. For certain operations, there exists a specialized version of IR node type in addition to the general version. For example, <code>ValueAdd</code> handles the general addition that makes no assumption on operand types, while <code>ArithAdd</code> handles the case where both operands are statically known to be numbers (e.g., not <code>String</code> or <code>BigInt</code> or <code>Object</code>).</p>
-<p>The logic that selects between the two versions can be found <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGByteCodeParser.cpp#L5870" target="_blank" rel="noopener">here</a>. As one can see from the code, if the IR node types for the two operands both always return <code>Number</code> result (the <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGNodeType.h" target="_blank" rel="noopener">IR node type list</a> maintains what each node type may return), then an <code>ArithAdd</code> is emitted instead of <code>ValueAdd</code>. Since this is before any analysis or optimizations are run, there isn’t anything fancy here: all it checks is the IR node type.</p>
-<p>Side notes:</p>
-<ul>
-<li>I found <a href="https://bugs.webkit.org/attachment.cgi?id=352782&amp;action=diff" target="_blank" rel="noopener">this diff</a>, which introduced the <code>ValueSub</code> opcode, quite helpful to understand what’s going on here.</li>
-<li>I wasn’t able to figure out why the criteria for selecting <code>ArithAdd</code> is <code>op1-&gt;hasNumberResult() &amp;&amp; op2-&gt;hasNumberResult()</code>. The <code>if</code>-check rules out result types that are more precise than <code>Number</code> (e.g., <code>Int32</code>, <code>Int52</code> or <code>Double</code>), but I can’t see the reason to rule out such cases.</li>
-</ul>
-<h3 id="Backward-Propagation-Pass">Backward Propagation Pass</h3>
-<p><a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGBackwardsPropagationPhase.cpp" target="_blank" rel="noopener">Backward propagation</a> is the first static analysis pass executed by the DFG JIT.</p>
-<p>The backward propagation pass computes five flags for each DFG IR node. The flags are stored as part of [the <code>NodeFlags</code> field]((https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGNodeFlags.h) in each node. The definitions for the five flags are listed below, as per comments in the code:</p>
-<ul>
-<li><code>UsesAsNumber</code>: whether the node result may be used in a context that observes fractional, or bigger-than-int32, results.</li>
-<li><code>UsesAsOther</code>: whether the node result may be used in a context that distinguishes between <code>undefined</code> and <code>NaN</code>.</li>
-<li><code>NeedsNegZero</code>: whether the node result may be used in a context that distinguishes between <code>+0</code> and <code>-0</code>.</li>
-<li><code>UsesAsInt</code>: whether the node result may be used in a context that prefers (but not requires) <code>int</code> values.</li>
-<li><code>UsesAsArrayIndex</code>: whether the node result may be used in a context that strongly prefers <code>int</code> values.</li>
-</ul>
-<p>For the first three flags, not setting a flag that ought to be set is a correctness issue.</p>
-<p>For example, if the flag <code>UsesAsOther</code> is not set, but a node <code>x</code> is actually used in a context that distinguished <code>undefined</code> and <code>NaN</code> (e.g., <code>x + &quot;123&quot;</code>), then the program may be misoptimized, and the user may observe unexpected result for that computation (e.g., getting <code>&quot;NaN123&quot;</code> instead of <code>&quot;undefined123&quot;</code>).</p>
-<p>The <code>NeedsNegZero</code> flag seems (<a href="https://bugs.webkit.org/show_bug.cgi?id=113862" target="_blank" rel="noopener">based on this bug report</a>) to enable some <code>-0</code> related optimizations. For example, <code>a + (-0)</code> can be optimized to <code>a</code> by speculating <code>a</code> to be not <code>-0</code>. The speculation is usually worth because <code>-0</code> is rare, but it’s better to not speculate at all: if <code>a + (-0)</code> is part of a larger expression, and we can prove that even if <code>a + (-0)</code> were <code>-0</code>, the result of the full expression would be the same as if it were <code>0</code>, then we can omit the speculation. One example where speculation <code>a != (-0)</code> can be omitted is <code>(a + (-0)) + 1</code>, and one counterexample where speculation <code>a != (-0)</code> is required is <code>1 / (a + (-0))</code>. This is what the flag tries to determine.</p>
-<p>The <code>UsedAsNumber</code> flag, based on my guess (<a href="https://trac.webkit.org/changeset/145489/webkit" target="_blank" rel="noopener">from this commit</a>), is designed to enable a special Javascript-specific optimization: Javascript bit-operators cast input to <code>int32</code> and also outputs <code>int32</code>, so certain overflow checks can be eliminated if the output is fed into a bit-operator (for example, in <code>(a + 1) | 0</code>, if <code>a</code> were speculated as an <code>int32_t</code>, the overflow check for <code>a + 1</code> may be omitted). It’s pretty tricky as seen from the related code and I can’t fully understand how the logic and optimization works. Given also that it seems to be a Javascript-specific optimization, I will overlook this flag below.</p>
-<p>For the last two flags, however, not setting a flag that ought to be set is merely a performance issue and does not affect correctness.</p>
-<p><a href="https://bugs.webkit.org/attachment.cgi?id=229754&amp;action=diff" target="_blank" rel="noopener">The motivation</a> for <code>UseAsArrayIndex</code> flag is that the conversion from a <code>double</code> to <code>int</code> is an expensive instruction, and since it is used as array index, it could be inside a loop and cause a big performance impact, so we should avoid this bad case if possible.</p>
-<h4 id="The-Algorithm">The Algorithm</h4>
-<p>In the <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGNodeType.h#L579" target="_blank" rel="noopener">initial state</a> of a node, all the five flags are not set. The backward propagation pass is executed to set up the five flags (and it must set the first three flags correctly <em>for correctness</em>).</p>
-<p>The backward propagation pass is a monotonic process. Each flag may only be switched from <code>unset</code> to <code>set</code>, but not the other way. This makes sure that a fixed point (where further execution of the pass can result in no state changes) is guaranteed to be eventually reached. However, this also means that if at one point we set a flag which condition actually never happens in reality, there is no way to undo the bad decision.</p>
-<p>The pass iterates until the fixpoint is reached. In each iteration, it does the following:</p>
-<ul>
-<li>Iterate each basic block in reverse order.</li>
-<li>Iterate each IR instruction node in the basic block in reverse order.</li>
-<li>For the current IR node, use its flags to update the flags of its operand (i.e., children) nodes. The concrete update logic depends on the node type, and is handwritten.</li>
-</ul>
-<p>Since there are close to 400 different IR node types, for correctness, the <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGBackwardsPropagationPhase.cpp#L156" target="_blank" rel="noopener">default operation</a> (for a node type not handled in the switch-case) is conservative: it sets the first three flags in all its operands.</p>
-<p>As another conservative measure, even for node types that are explicitly handled, the default flags to propagate is the flags of the current node. So flags are propagated all the way down by default, and only stopped when the logic is explicitly written to <em>not</em> propagate a flag.</p>
-<p>We will use <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGBackwardsPropagationPhase.cpp#L281" target="_blank" rel="noopener">the logic for <code>ValueAdd</code></a> and <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGBackwardsPropagationPhase.cpp#L296" target="_blank" rel="noopener">the logic for <code>ArithAdd</code></a> as examples to illustrate how the algorithm works.</p>
-<p>For <code>ArithAdd</code>, since we already know the two operands must be <code>Number</code>s, it’s safe to not set the <code>UsesAsOther</code> flag for its operands. And if at least one of the operands is known to be not a <code>-0</code>, then the result of the add must not be a <code>-0</code> as well, so the <code>-0</code> in the operand will not be observable after the add, so in this case it’s safe to not set the <code>NeedsNegZero</code> flag for both operands.</p>
-<p><code>ValueAdd</code> is similar to <code>ArithAdd</code>, except that it may take non-<code>Number</code> operands. In that case, <code>undefined</code> and <code>NaN</code> in operand may be distinguished (for example, in <code>x + &quot;123&quot;</code>). Therefore, for <code>ValueAdd</code>, the <code>UsesAsOther</code> flag is only not propagated if at least one of the operand is known to produce numeric results (in that case, if the other side is <code>undefined</code> or <code>NaN</code>, the final result is always the same, so the two are indistinguishable). Note that such criteria is not complete (sufficient but not necessary): but this is as far as static analysis can go.</p>
-<p>Side notes:</p>
-<ul>
-<li>I couldn’t fully understand the purpose or implementations of the <code>UsedAsNumber</code> flag. Any explanations would be welcomed.</li>
-<li>The pass did not handle operators like <code>ValueSub</code>, <code>ValueMul</code>, etc. It seems to me the developers forgot to update the pass when those operators are introduced.</li>
-</ul>
-<p>One interesting thing is about the “conservative” measures implemented in the code to reduce the risk of correctness bugs. If my interpretation that the devs forgot to put <code>ValueSub</code>, <code>ValueMul</code>, etc. into the pass is correct, then on one hand, the conservative measures indeed prevented a correctness bug. But on the other hand, since no correctness bug is produced, it would take a long time to figure out that the pass has become outdated and has been silently producing suboptimal results.</p>
-<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
-      
-    </div>
-
-    
-      
-
-    
-
-    <footer class="article-footer">
-    <!--
-      <a data-url="2021/09/12/2021-09-12/" data-id="cl6ki3vdk0007c6ojhtft7a99" class="article-share-link">
+      <a data-url="2021/09/20/2021-09-20/" data-id="cl8sevkez0008duomgddmcj3z" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1772,7 +1749,7 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
   
   <div class="sidebar-module">
     <h4>Archives</h4>
-    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">7</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">8</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
   </div>
 
 
@@ -1781,6 +1758,10 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
   <div class="sidebar-module">
     <h4>Recents</h4>
     <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+        </li>
       
         <li>
           <a href="2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
@@ -1796,10 +1777,6 @@ I do not work on JavaScriptCore, my experience with Javascript is very limited, 
       
         <li>
           <a href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
-        </li>
-      
-        <li>
-          <a href="2022/04/30/2022-04-30/">The Watchpoint Mechanism in JSC</a>
         </li>
       
     </ul>
