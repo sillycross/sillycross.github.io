@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title></title>
-  <icon>icon.png</icon>
+  <icon>https://sillycross.github.io/icon.png</icon>
   <subtitle>「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</subtitle>
-  <link href="atom.xml" rel="self"/>
+  <link href="https://sillycross.github.io/atom.xml" rel="self"/>
   
-  <link href="localhost:4000/"/>
-  <updated>2022-10-03T07:31:08.640Z</updated>
-  <id>localhost:4000/</id>
+  <link href="https://sillycross.github.io/"/>
+  <updated>2022-10-03T20:48:22.449Z</updated>
+  <id>https://sillycross.github.io/</id>
   
   <author>
     <name>Haoran Xu</name>
@@ -18,10 +18,10 @@
   
   <entry>
     <title>Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</title>
-    <link href="2022/10/02/2022-10-02/"/>
-    <id>2022/10/02/2022-10-02/</id>
+    <link href="https://sillycross.github.io/2022/10/02/2022-10-02/"/>
+    <id>https://sillycross.github.io/2022/10/02/2022-10-02/</id>
     <published>2022-10-02T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.449Z</updated>
     
     
       
@@ -39,10 +39,10 @@
   
   <entry>
     <title>How to check if a real number is an integer in C++?</title>
-    <link href="2022/07/18/2022-07-18/"/>
-    <id>2022/07/18/2022-07-18/</id>
+    <link href="https://sillycross.github.io/2022/07/18/2022-07-18/"/>
+    <id>https://sillycross.github.io/2022/07/18/2022-07-18/</id>
     <published>2022-07-18T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.449Z</updated>
     
     
       
@@ -60,10 +60,10 @@
   
   <entry>
     <title>Bizarre Performance Characteristics of Alder Lake CPU</title>
-    <link href="2022/06/11/2022-06-11/"/>
-    <id>2022/06/11/2022-06-11/</id>
+    <link href="https://sillycross.github.io/2022/06/11/2022-06-11/"/>
+    <id>https://sillycross.github.io/2022/06/11/2022-06-11/</id>
     <published>2022-06-11T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.449Z</updated>
     
     
       
@@ -81,10 +81,10 @@
   
   <entry>
     <title>Understanding GC in JSC From Scratch</title>
-    <link href="2022/06/02/2022-06-02/"/>
-    <id>2022/06/02/2022-06-02/</id>
+    <link href="https://sillycross.github.io/2022/06/02/2022-06-02/"/>
+    <id>https://sillycross.github.io/2022/06/02/2022-06-02/</id>
     <published>2022-06-02T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.449Z</updated>
     
     
       
@@ -102,10 +102,10 @@
   
   <entry>
     <title>NP70PNP + Ubuntu Tweak Notes</title>
-    <link href="2022/05/31/2022-05-31/"/>
-    <id>2022/05/31/2022-05-31/</id>
+    <link href="https://sillycross.github.io/2022/05/31/2022-05-31/"/>
+    <id>https://sillycross.github.io/2022/05/31/2022-05-31/</id>
     <published>2022-05-31T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -123,10 +123,10 @@
   
   <entry>
     <title>The Watchpoint Mechanism in JSC</title>
-    <link href="2022/04/30/2022-04-30/"/>
-    <id>2022/04/30/2022-04-30/</id>
+    <link href="https://sillycross.github.io/2022/04/30/2022-04-30/"/>
+    <id>https://sillycross.github.io/2022/04/30/2022-04-30/</id>
     <published>2022-04-30T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -144,10 +144,10 @@
   
   <entry>
     <title>Note on x86-64 Memory Model</title>
-    <link href="2022/04/26/2022-04-26/"/>
-    <id>2022/04/26/2022-04-26/</id>
+    <link href="https://sillycross.github.io/2022/04/26/2022-04-26/"/>
+    <id>https://sillycross.github.io/2022/04/26/2022-04-26/</id>
     <published>2022-04-26T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -165,10 +165,10 @@
   
   <entry>
     <title>From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro</title>
-    <link href="2022/04/01/2022-04-01/"/>
-    <id>2022/04/01/2022-04-01/</id>
+    <link href="https://sillycross.github.io/2022/04/01/2022-04-01/"/>
+    <id>https://sillycross.github.io/2022/04/01/2022-04-01/</id>
     <published>2022-04-01T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -186,10 +186,10 @@
   
   <entry>
     <title>Some Random Thoughts</title>
-    <link href="2021/10/24/2021-10-24/"/>
-    <id>2021/10/24/2021-10-24/</id>
+    <link href="https://sillycross.github.io/2021/10/24/2021-10-24/"/>
+    <id>https://sillycross.github.io/2021/10/24/2021-10-24/</id>
     <published>2021-10-24T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -207,10 +207,10 @@
   
   <entry>
     <title>Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</title>
-    <link href="2021/09/20/2021-09-20/"/>
-    <id>2021/09/20/2021-09-20/</id>
+    <link href="https://sillycross.github.io/2021/09/20/2021-09-20/"/>
+    <id>https://sillycross.github.io/2021/09/20/2021-09-20/</id>
     <published>2021-09-20T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -228,10 +228,10 @@
   
   <entry>
     <title>Static Analysis in JavaScriptCore (Part I)</title>
-    <link href="2021/09/12/2021-09-12/"/>
-    <id>2021/09/12/2021-09-12/</id>
+    <link href="https://sillycross.github.io/2021/09/12/2021-09-12/"/>
+    <id>https://sillycross.github.io/2021/09/12/2021-09-12/</id>
     <published>2021-09-12T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -249,10 +249,10 @@
   
   <entry>
     <title>Some Experiment Notes on Pitching and Storytelling</title>
-    <link href="2021/09/03/2021-09-03/"/>
-    <id>2021/09/03/2021-09-03/</id>
+    <link href="https://sillycross.github.io/2021/09/03/2021-09-03/"/>
+    <id>https://sillycross.github.io/2021/09/03/2021-09-03/</id>
     <published>2021-09-03T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -270,10 +270,10 @@
   
   <entry>
     <title>A Trick for Reflection in C++</title>
-    <link href="2021/08/23/2021-08-23/"/>
-    <id>2021/08/23/2021-08-23/</id>
+    <link href="https://sillycross.github.io/2021/08/23/2021-08-23/"/>
+    <id>https://sillycross.github.io/2021/08/23/2021-08-23/</id>
     <published>2021-08-23T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -291,10 +291,10 @@
   
   <entry>
     <title>The Overhead of Non-native Stacks (AKA, How Amazingly Hard it is to Get a Microbenchmark Done Right)</title>
-    <link href="2021/08/09/2021-08-09/"/>
-    <id>2021/08/09/2021-08-09/</id>
+    <link href="https://sillycross.github.io/2021/08/09/2021-08-09/"/>
+    <id>https://sillycross.github.io/2021/08/09/2021-08-09/</id>
     <published>2021-08-09T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
@@ -312,10 +312,10 @@
   
   <entry>
     <title>Motivation for Yet Another Blog</title>
-    <link href="2021/08/07/2021-08-07/"/>
-    <id>2021/08/07/2021-08-07/</id>
+    <link href="https://sillycross.github.io/2021/08/07/2021-08-07/"/>
+    <id>https://sillycross.github.io/2021/08/07/2021-08-07/</id>
     <published>2021-08-07T00:00:00.000Z</published>
-    <updated>2022-10-03T07:31:08.640Z</updated>
+    <updated>2022-10-03T20:48:22.445Z</updated>
     
     
       
