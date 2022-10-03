@@ -13,7 +13,7 @@
 <meta property="og:description" content="I recently hit the following use case in my project: I have a function RunAllPasses(obj), which runs a list of transformation passes on obj. All passes are independent from each other, so one can run">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2022-10-02T00:00:00.000Z">
-<meta property="article:modified_time" content="2022-10-03T06:47:45.697Z">
+<meta property="article:modified_time" content="2022-10-03T07:31:08.640Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
   
@@ -161,6 +161,8 @@
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">std</span>::<span class="built_in">map</span>&lt;<span class="keyword">int</span>&gt; g_list;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    g_list.insert(<span class="number">123</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">static</span> <span class="keyword">inline</span> S r;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Instantiate, say, S&lt;int&gt;</span></span><br></pre></td></tr></table></figure>
 <p>Answer: at the time the constructor of <code>r</code> runs, the constructor of <code>g_list</code> may not have run.</p>
 <p>This is because <a href="https://timsong-cpp.github.io/cppwp/basic.start#dynamic-3.1" target="_blank" rel="noopener">according to C++ standard</a>, “dynamic initialization of a non-block variable with static storage duration is unordered if the variable is an implicitly or explicitly instantiated specialization” (in our case, any instantiation of the variable <code>r</code>). Since <code>std::map</code> does not have a <code>constexpr</code> constructor, <code>g_list</code> is also dynamically initialized, so <code>r</code> may be initialized before <code>g_list</code>, even if <code>g_list</code> “appears” to be defined before <code>r</code>.</p>
+<h4 id="But-isn’t-Google-Test-using-the-same-global-variable-trick">But isn’t Google Test using the same global variable trick?</h4>
+<p>The above question comes to my mind soon after I uploaded this post, so I gave it a try. The result is as expected: if I move my Google test files to a static library linked against the final unit test executable, all the tests are gone. Of course, for unit tests, there is absolutely no reason to make them a static library, so I would say Google Test made the completely correct design decision. However, for the general use cases, it seems unreasonable to silently introduce bugs when the code is linked as a static library.</p>
 <link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
       
     </div>
@@ -172,7 +174,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="2022/10/02/2022-10-02/" data-id="cl8sevkf7000gduomds0ze67r" class="article-share-link">
+      <a data-url="2022/10/02/2022-10-02/" data-id="cl8sgdvwx000gbsoja8as19vf" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
