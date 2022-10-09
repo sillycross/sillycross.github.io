@@ -142,11 +142,11 @@
 <p>and we get the expected output of <code>In constructor S</code> followed by <code>In main</code>. This shows that the C++ compiler indeed took care to preserve the global variable <code>s</code> from being pruned by the linker even if it is unused, which is good.</p>
 <p>But if we make <code>a.cpp</code> a library, things break!</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">clang++ a.cpp -c -std=c++17</span><br><span class="line">ar r mylib.a a.o</span><br><span class="line">clang++ b.cpp -c -std=c++17</span><br><span class="line">clang++ b.o mylib.a</span><br><span class="line">./a.out</span><br><span class="line"><span class="comment"># The 'In constructor S' line won't be printed!</span></span><br></pre></td></tr></table></figure>
-<p>What’s the problem? As it turns out, if none of the symbols in some <em>file</em> <code>X</code> of a static library is directly referenced by the main program, then the file <code>X</code> won’t be linked into the main program at all. And this “file-level pruning” ignores whatever “do-not-prune” annotation emitted by the C++ compiler, since the file is not linked in altogether.</p>
-<p>For example, if we change the code a bit, so that <code>b.cpp</code> uses a function defined in <code>a.cpp</code>:</p>
+<p>After further investigation, it turns out that the erratic behavior depends on whether the <em>file</em> <code>a.cpp</code> contains any symbols that are being used by the main program. For example, adding another file <code>c.cpp</code> into the static library won’t help, even if <code>c.cpp</code> contains a function used by the main program. But if we change the code a bit, so that <code>a.cpp</code> contains a function used by the main program, like the following:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// a.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span> &#123;</span></span><br><span class="line">  S() &#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In constructor S\n"</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// Declare global variable 's'</span></span><br><span class="line"><span class="keyword">inline</span> S s;</span><br><span class="line"><span class="comment">// Declare a function used by b.cpp</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span> </span>&#123; <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"In function f\n"</span>);</span><br></pre></td></tr></table></figure>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// b.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"In main\n"</span>);</span><br><span class="line">  f();</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
 <p>Then, magically, the <code>In constructor S</code> line would be printed out again.</p>
+<p>What’s the problem? As it turns out, if none of the symbols in some <em>file</em> <code>X</code> of a static library is directly referenced by the main program, then the file <code>X</code> won’t be linked into the main program at all. And this “file-level pruning” ignores whatever “do-not-prune” annotation emitted by the C++ compiler in the file, since the file is not linked in altogether.</p>
 <p>So I reached the conclusion that this approach is fundamentally fragile:</p>
 <ol>
 <li>The irratic behavior won’t show up if the global variable is defined in an object file, only when it is defined in static libraries.</li>
@@ -172,7 +172,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="cl8t8v1ih000gann96wtq3h8c" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="cl90lhv8z000gbvonenxkcjii" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -291,7 +291,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="cl8t8v1if000fann94ex2hvda" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="cl90lhv8y000fbvon3tcog320" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -418,7 +418,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="cl8t8v1ie000eann96ricbivn" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="cl90lhv8w000ebvon36heb5w6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1116,7 +1116,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="cl8t8v1im000hann98m62hm8y" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="cl90lhv97000hbvon4ktn37a6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1196,7 +1196,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="cl8t8v1id000dann90mne7ixi" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="cl90lhv8v000dbvon7xos1pcs" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1321,7 +1321,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="cl8t8v1ic000cann95pf410c5" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="cl90lhv8u000cbvonecqpbu5q" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1433,7 +1433,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="cl8t8v1ia000bann98bc27s1v" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="cl90lhv8s000bbvon2mkf6zbw" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1513,7 +1513,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="cl8t8v1i9000aann96mte6z9k" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="cl90lhv8r000abvon9j33dssf" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1598,7 +1598,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="cl8t8v1i70009ann9fcok0d3p" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="cl90lhv8p0009bvonfh2k2lhc" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1714,7 +1714,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2021/09/20/2021-09-20/" data-id="cl8t8v1i60008ann997qv93qu" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2021/09/20/2021-09-20/" data-id="cl90lhv8o0008bvonar9f33b0" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
