@@ -98,6 +98,166 @@
         <div class="col-sm-8 blog-main">
           
   
+    <article id="post-2022-11-22" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="2022/11/22/2022-11-22/" class="article-date"><time datetime="2022-11-22T00:00:00.000Z" itemprop="datePublished">2022-11-22</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>It is well-known that writing a good VM for a dynamic language is never an easy job. High-performance interpreters, such as the <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">JavaScript interpreter in Safari</a>, or <a href="http://lua-users.org/lists/lua-l/2011-02/msg00742.html" target="_blank" rel="noopener">the Lua interpreter in LuaJIT</a>, are often hand-coded in assembly. If you want a JIT compiler for better performance, well, you’ve got some more assembly to write. And if you want the best possible performance with multiple-tier JIT compilation… Well, that’s assembly all the way down.</p>
+<p>I have been working on a research project to make writing VMs easier. The idea arises from the following observation: writing a naive interpreter is not hard (just write a big switch-case), but writing a good interpreter (or JIT compiler) is hard, as it unavoidably involves hand-coding assembly. So why can’t we implement a special compiler to automatically <em>generate</em> a high-performance interpreter (and even the JIT) from “the big switch-case”, or more formally, a semantical description of what each bytecode does?</p>
+<h3 id="The-LuaJIT-Remake-Project">The LuaJIT Remake Project</h3>
+<p>I chose <a href="https://www.lua.org/" target="_blank" rel="noopener">Lua</a> as the experiment target for my idea, mainly because Lua is concise yet supports almost every language feature one can find in dynamic languages, including exotic ones like stackful coroutines. I named my project <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">LuaJIT Remake</a> (LJR) because in the long term, it will be a multi-tier method-based JIT compiler for Lua.</p>
+<p>After months of work on the project, I’ve finally got some early results to share. LJR now has a feature-complete Lua 5.1 interpreter that is automatically generated at build time using a meta-compiler called <code>Deegen</code> (for “Dynamic language Execution Engine Generator”). More importantly, it is the world’s fastest Lua interpreter to date, outperforming LuaJIT’s interpreter by 28% and the official Lua interpreter by 171% on average on a variety of benchmarks<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>.</p>
+<p>The figure below illustrates the performance of our interpreter, the LuaJIT interpreter, and the official PUC Lua interpreter. PUC Lua’s performance is normalized to 1 as a baseline.</p>
+<p><img src="/images/2022-11-22/interpreter-perf-comparison-2.png" alt=""></p>
+<p>As the figure shows, our interpreter performs better than LuaJIT’s hand-coded-in-assembly interpreter on 31 out of the 34 benchmarks<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>, and on geometric average, we run 28% faster than LuaJIT interpreter, and almost 3x the speed of official PUC Lua.</p>
+<p>Enough of the numbers, now I will dive a bit into how my approach works.</p>
+<h3 id="Why-Assembly-After-All">Why Assembly After All?</h3>
+<p>To explain how I built the fastest Lua interpreter, one needs to understand why (previously) the best interpreters have been hand-coded in assembly. This section is all about background. If you are already familiar with interpreters, feel free to skip to the next section.</p>
+<p>Mike Pall, the author of LuaJIT, has explained this matter clearly in <a href="http://lua-users.org/lists/lua-l/2011-02/msg00742.html" target="_blank" rel="noopener">this great email thread</a> back in 2011. The problem with the “big switch-case” approach is that C/C++ compilers simply cannot handle such code well. Although eleven years have passed, the situtation didn’t change much. Based on my experience, even if a function only has one fast path and one cold path, and the cold path has been nicely annotated with <code>unlikely</code>, LLVM backend will still pour a bunch of unnecessary register moves and stack spills into the fast path<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>. And for the “big switch-case” interpreter loop with hundreds of fast-paths and cold-paths, it’s unsurprising that compilers fail to work well.</p>
+<p><a href="https://en.wikipedia.org/wiki/Tail_call" target="_blank" rel="noopener">Tail call</a>, also known as <a href="https://dl.acm.org/doi/10.1145/800179.810196" target="_blank" rel="noopener">continuation-passing style</a>, is an alternative to switch-case-based interpreter loop. Basically each bytecode gets its own function that does the job, and when the job is done, control is transferred to the next function via a tail call dispatch (i.e., a jump instruction at machine code level). So despite that conceptually, the bytecode functions are calling each other, they are really jumping to each other at machine code level, and there will be no unbounded stack growth. An alternate way to look at it is that each “case” clause in the switch-case interpreter loop becomes a function. The “switch” will jump (i.e., tail call) to the corresponding “case” clause, and at the end of the case a jump (i.e., tail call) is executed to jump back to the switch dispatcher<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>.</p>
+<p>With the tail-call approach, each bytecode now gets its own function, and the pathological case for the C/C++ compiler is gone. And as shown by <a href="https://blog.reverberate.org/2021/04/21/musttail-efficient-interpreters.html" target="_blank" rel="noopener">the experience</a> of the Google protobuf developers, the tail-call approach can indeed be used to build very good interpreters. But can it push to the limit of hand-written assembly interpreters? Unfortunately, the answer is still no, at least at its current state.</p>
+<p>The main blockade to the tail-call approach is the callee-saved registers. Since each bytecode function is still a function, it is required to abide to the calling convention, specifically, every callee-saved register must retain its old value at function exit. So if a bytecode function needs to use a callee-saved register, it needs to save the old value on the stack and restore it at the end<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. The only way to solve this problem is to use a calling convention with no callee-saved registers. Unfortunately, Clang is (to-date) the only compiler that offers guaranteed-tail-call intrinsic (<code>[[clang::musttail]]</code> annotation), but it has no such user-exposed calling convention with no callee-saved registers. So you lose 6 (or 8, depending on cconv) of the 15 registers for no reason on x86-64, which is clearly bad.</p>
+<p>Another blockade to the tail-call approach is, again, the calling convention. No unbounded stack growth is a requirement, but tricky problems can arise when the caller and callee function prototype does not match, and some parameters are being passed in the stack. So Clang makes the compromise and requires the caller and callee to have <em>identical</em> function prototypes if <code>musttail</code> is used. This is extremely annoying in practice once you have tried to write anything serious under such limitation (for POC purpose I had hand-written a naive Lua interpreter using <code>musttail</code>, so I have first-hand experience on how annoying it is).</p>
+<h3 id="Generating-the-Interpreter-Another-Level-Of-Indirection-Solves-Everything">Generating the Interpreter: Another Level Of Indirection Solves Everything</h3>
+<p>As you might have seen, the root of all the difficulties is that our tool (C/C++) is not ideal for the problem we want to solve. So what’s the solution?</p>
+<p>Of course, throwing the tool away and resort to sheer force (hand-coding assembly) is one solution, but doing so also results in high engineering cost. Can we do it more swiftly?</p>
+<p>It is <a href="https://en.wikipedia.org/wiki/Fundamental_theorem_of_software_engineering" target="_blank" rel="noopener">well-known</a> that all problems in computer science can be solved by another level of indirection. In our case, C/C++ is a very good tool to describe the semantics of each bytecode (i.e., what each bytecode should do), but C/C++ is not a good tool to write the most efficient interpreter. So what if we add one level of indirection: we write the bytecode semantical description in C++, <em>compile it to LLVM IR</em>, and feed the IR into a special-purpose compiler. The special-purpose compiler will take care of all the dirty work, doing proper transformation to the IR and finally generate a nice tail-call-based interpreter.</p>
+<p>For example, at LLVM IR level, it is trivial to make a function use <code>GHC</code> calling convention (a convention with no callee-saved registers) and properly transform the function to unify all the function prototype, thus solving the two major problems with <code>musttail</code> tail calls that is unsolvable at C/C++ level. In fact, <code>Deegen</code> (our meta-compiler that generates the interpreter) does a <em>lot</em> more than producing the tail calls, which we will cover in the rest of this post.</p>
+<h3 id="Hide-All-the-Ugliness-Behind-Nice-APIs">Hide All the Ugliness Behind Nice APIs</h3>
+<p>In Deegen framework, the semantics of each bytecode is described by a C++ function. One of the most important design philosophy of Deegen is to abstract away all the nasty parts of an interpreter. I will demonstrate with a simplified example for the <code>Add</code> bytecode:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() &amp;&amp; rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>The function <code>Add</code> takes two boxed values (a value along with its type) <code>lhs</code> and <code>rhs</code> as input. It first checks if both <code>lhs</code> and <code>rhs</code> are <code>double</code> (the <code>Is&lt;tDouble&gt;()</code> check). If not, we throw out an error. Otherwise, we add them together by casting the two boxed value to its actual type (<code>double</code>) and do a normal <code>double</code> addition. Finally, we create a new boxed value of <code>double</code> type using <code>TValue::Create&lt;tDouble&gt;()</code>, return it as the result of the bytecode and dispatch to the next bytecode, through the <code>Return()</code> API call (note that this is not the C keyword <code>return</code>).</p>
+<p>Notice how much nasty work we have abstracted away: decoding the bytecode, loading the operands and constants, throwing out errors, storing results to the stack frame, and dispatching to the next bytecode. All of these interpreter details either happen automatically, or happen with a simple API call (e.g., <code>ThrowError</code> or <code>Return</code>).</p>
+<p>Now let’s extend our <code>Add</code> to add support for the Lua <code>__add</code> metamethod semantics:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">AddContinuation</span><span class="params">(TValue <span class="comment">/*lhs*/</span>, TValue <span class="comment">/*rhs*/</span>)</span> </span>&#123;</span><br><span class="line">  Return(GetReturnValueAtOrd(<span class="number">0</span>));</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    <span class="comment">/* we want to call metamethod now */</span></span><br><span class="line">    HeapPtr&lt;FunctionObject&gt; mm = GetMMForAdd(lhs, rhs);</span><br><span class="line">    MakeCall(mm, lhs, rhs, AddContinuation);</span><br><span class="line">    <span class="comment">/* MakeCall never returns */</span></span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() &amp;&amp; rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>The <code>GetMMForAdd</code> is some arbitrary runtime function call that gets the metamethod. Deegen does not care about its implementation: the bytecode semantic description is just a normal C++ function, so it can do anything allowed by C++, of course including calling other C++ functions. The interesting part is the <code>MakeCall</code> API. It allows you to call other Lua functions with the specified parameters, and most importantly, a <em>return continuation</em>. The <code>MakeCall</code> API does not return. Instead, when the called function returns, control will be returned to the return continuation (the <code>AddContinuation</code> function). The return continuation function is similar to the bytecode function: it has access to all the bytecode operands, and additionally, it has access to all the values returned from the call. In our case, the semantics for Lua <code>__add</code> is to simply return the first value returned by the call as the result of the bytecode, so we use <code>GetReturnValueAtOrd(0)</code> to get that value, and use the <code>Return</code> API we have covered earlier to complete the <code>Add</code> bytecode and dispatch to the next bytecode.</p>
+<p>Again, notice how much nasty work that we have abstracted away: all the details of creating the new Lua frame, adjusting the parameters and return values (overflowing arguments needs to go to variadic arg if callee accepts it, insufficient arguments need to get <code>nil</code>), transferring control to the callee functions, etc., are all hidden by a mere <code>MakeCall</code> API. Furthermore, all of these are language-neutral: if we were to target some other languages (e.g., Python), most of the Deegen code that implements the <code>MakeCall</code> could be reused.</p>
+<p>The use of return continuation is designed to support Lua coroutines. Since Lua coroutines are stackful, and <code>yield</code> can happen anywhere (as <code>yield</code> is not a Lua keyword, but a library function), we need to make sure that the C stack is empty at any bytecode boundary, so we can simply tail call to the other continuation to accomplish a coroutine switch. This design also has a few advantages compared with PUC Lua’s coroutine implementation:</p>
+<ol>
+<li>We have no fragile <code>longjmp</code>s.</li>
+<li>We can easily make any library function that calls into VM yieldable using this mechanism. In fact, the error message <code>cannot yield across C call frames</code> is gone completely in LJR: all Lua standard library functions, including exotic ones like <code>table.sort</code>, are redesigned to be yieldable using this mechanism.</li>
+</ol>
+<h3 id="Automation-Automation-and-More-Automation">Automation, Automation, and More Automation!</h3>
+<p>The bytecode semantic function specifies the execution semantics of the bytecode, but one still needs to specify the definition of the bytecode. For example, one needs to know that <code>AddVN</code> takes two operands where LHS is a bytecode slot and RHS is a number value in the constant table, and that <code>AddVN</code> returns one value, and that it always fallthroughs to the next bytecode and cannot branch to anywhere else. In Deegen, this is achieved by a <em>bytecode specification language</em>.</p>
+<p>Again, let’s use the <code>Add</code> as the example:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">DEEGEN_DEFINE_BYTECODE(Add) &#123;</span><br><span class="line">  Operands(</span><br><span class="line">    BytecodeSlotOrConstant(<span class="string">"lhs"</span>),</span><br><span class="line">    BytecodeSlotOrConstant(<span class="string">"rhs"</span>)</span><br><span class="line">  );</span><br><span class="line">  Result(BytecodeValue);</span><br><span class="line">  Implementation(Add);</span><br><span class="line">  Variant(</span><br><span class="line">    Op(<span class="string">"lhs"</span>).IsBytecodeSlot(),</span><br><span class="line">    Op(<span class="string">"rhs"</span>).IsBytecodeSlot()</span><br><span class="line">  );</span><br><span class="line">  Variant(</span><br><span class="line">    Op(<span class="string">"lhs"</span>).IsConstant&lt;tDoubleNotNaN&gt;(),</span><br><span class="line">    Op(<span class="string">"rhs"</span>).IsBytecodeSlot()</span><br><span class="line">  );</span><br><span class="line">  Variant(</span><br><span class="line">    Op(<span class="string">"lhs"</span>).IsBytecodeSlot(),</span><br><span class="line">    Op(<span class="string">"rhs"</span>).IsConstant&lt;tDoubleNotNaN&gt;()</span><br><span class="line">  );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>There are a few things going on here so we will go through them one by one. First of all, the <code>DEEGEN_DEFINE_BYTECODE</code> is a macro that tells us that you are defining a bytecode.</p>
+<p>The <code>Operands(...)</code> API call tells us that the bytecode has two operands, with each can be either a bytecode slot (a slot in the call frame) or a constant in the constant table. Besides <code>BytecodeSlotOrConstant</code>, one can also use <code>Literal</code> to define literal operands, and <code>BytecodeRange</code> to define a range of bytecode values in the call frame.</p>
+<p>The <code>Result(BytecodeValue)</code> API call tells us that the bytecode returns one value and does not branch. The enum key <code>BytecodeValue</code> means the bytecode returns one <code>TValue</code>. One can also use enum key <code>CondBr</code> to specify that the bytecode can branch, or just no argument to specify that the bytecode doesn’t return anything.</p>
+<p>The <code>Implementation(...)</code> API specifies the execution semantics of the bytecode, which is the <code>Add</code> function we just covered.</p>
+<p>The interesting part is the <code>Variant</code> API calls. It allows one to create different variants of the bytecode. For example, in Lua, we have the <code>AddVV</code> bytecode to add two bytecode values, or the <code>AddVN</code> bytecode to add a bytecode value with a constant <code>double</code>, or the <code>ADDNV</code> bytecode to add a constant <code>double</code> with a bytecode value. In a traditional interpreter implementation, the implementation of all of these bytecodes must be written by hand, which is not only laborious, but also error prone. However, in Deegen’s framework, all you need to do is to specify them as <code>Variant</code>s, and we will do all the work for you!</p>
+<p>The <code>IsConstant</code> API allows optionally further specifying the type of the constant, as shown in the <code>IsConstant&lt;tDoubleNotNaN&gt;()</code> usage in the snippet. Deegen implemented special LLVM optimization pass to simplify the execution semantics function based on the known and speculated type information of the operands. For example, for the bytecode variant where <code>rhs</code> is marked as <code>IsConstant&lt;tDoubleNotNaN&gt;()</code>, Deegen will realize that the <code>rhs.Is&lt;tDouble&gt;()</code> check in the bytecode function must be <code>true</code>, and optimize it out. This allows us to automatically generate efficient specialized bytecode implementation, without adding engineering cost to the user. (And by the way, the <code>tDouble</code> and <code>tDoubleNotNaN</code> things, or more formally, the type lattice of the language, is also user-defined. Deegen is designed to be a generic meta-compiler: it is not welded to Lua).</p>
+<p>Finally, Deegen will generate a user-friendly <code>CreateAdd</code> function for the user frontend parser to emit a <code>Add</code> bytecode. For example, the frontend parser can write the following code to generate an <code>Add</code> bytecode that adds bytecode slot <code>1</code> with constant <code>123.4</code>, and stores the output into slot <code>2</code>:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">bytecodeBuilder.CreateAdd(&#123;</span><br><span class="line">  .lhs = Local(<span class="number">1</span>),</span><br><span class="line">  .rhs = Cst&lt;tDouble&gt;(<span class="number">123.4</span>),</span><br><span class="line">  .output = Local(<span class="number">2</span>)</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p>The implementation of <code>CreateAdd</code> will automatically insert constants into the constant table, select the most suitable variant based in the input types (or throwing out an error if no satisfying variant can be found), and append the bytecode into the bytecode stream. The concrete layout of the bytecode in the bytecode stream is fully hidden from the user. This provides a maximally user-friendly and robust API for the user parser logic to build the bytecode stream.</p>
+<p><a href="https://github.com/luajit-remake/luajit-remake/blob/master/annotated/bytecodes/arithmetic_bytecodes.cpp" target="_blank" rel="noopener">This link</a> is the real implementation of all the Lua arithemtic bytecodes in LuaJIT Remake. It used a few features that we haven’t covered yet: the <code>DEEGEN_DEFINE_BYTECODE_TEMPLATE</code> macro allows defining a template of bytecodes, so <code>Add</code>, <code>Sub</code>, <code>Mul</code>, etc., can all be defined at once, minimizing engineering cost. The <code>EnableHotColdSplitting</code> API allows automatically hot-cold-splitting based on speculated and proven input operand types, and splits out the cold path into a dedicated function, which improves the final code quality (recall the earlier discussion on the importance of hot-cold code splitting?).</p>
+<p>And below is the actual disassembly of the interpreter generated by Deegen for Lua’s <code>AddVV</code> bytecode. Comments are manually added by me for exposition purposes:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">__deegen_interpreter_op_Add_0:</span><br><span class="line">    <span class="comment"># decode 'lhs' from bytecode stream</span></span><br><span class="line">    movzwl      2(%r12), %eax</span><br><span class="line">    <span class="comment"># decode 'rhs' from bytecode stream</span></span><br><span class="line">    movzwl      4(%r12), %ecx</span><br><span class="line">    <span class="comment"># load the bytecode value at slot 'lhs'</span></span><br><span class="line">    movsd       (%rbp,%rax,8), %xmm1</span><br><span class="line">    <span class="comment"># load the bytecode value at slot 'rhs'</span></span><br><span class="line">    movsd       (%rbp,%rcx,8), %xmm2</span><br><span class="line">    <span class="comment"># check if either value is NaN</span></span><br><span class="line">    <span class="comment"># Note that due to our boxing scheme, </span></span><br><span class="line">    <span class="comment"># non-double value will exhibit as NaN when viewed as double</span></span><br><span class="line">    <span class="comment"># so this checks if input has double NaN or non-double value</span></span><br><span class="line">    ucomisd     %xmm2, %xmm1</span><br><span class="line">    <span class="comment"># branch if input has double NaN or non-double values</span></span><br><span class="line">    jp          .LBB0_1</span><br><span class="line">    <span class="comment"># decode the destination slot from bytecode stream</span></span><br><span class="line">    movzwl      6(%r12), %eax</span><br><span class="line">    <span class="comment"># execute the add</span></span><br><span class="line">    addsd       %xmm2, %xmm1</span><br><span class="line">    <span class="comment"># store result to destination slot</span></span><br><span class="line">    movsd       %xmm1, (%rbp,%rax,8)</span><br><span class="line">    <span class="comment"># decode next bytecode opcode</span></span><br><span class="line">    movzwl      8(%r12), %eax</span><br><span class="line">    <span class="comment"># advance bytecode pointer to next bytecode</span></span><br><span class="line">    addq        <span class="variable">$8</span>, %r12</span><br><span class="line">    <span class="comment"># load the interpreter function for next bytecode</span></span><br><span class="line">    movq        __deegen_interpreter_dispatch_table(,%rax,8), %rax</span><br><span class="line">    <span class="comment"># dispatch to next bytecode</span></span><br><span class="line">    jmpq        *%rax</span><br><span class="line">.LBB0_1:</span><br><span class="line">    <span class="comment"># branch to automatically generated slowpath (omitted)</span></span><br><span class="line">    jmp         __deegen_interpreter_op_Add_0_quickening_slowpath</span><br></pre></td></tr></table></figure>
+<p>As one can see, thanks to all of our optimizations, the quality of the assembly generated by Deegen has no problem rivalling hand-written assembly.</p>
+<h3 id="Inline-Caching-API-The-Tricks-of-the-Trade">Inline Caching API: The Tricks of the Trade</h3>
+<p>A lot of LJR’s speedup over LuaJIT interpreter comes from our support of inline caching. We have rewritten the Lua runtime from scratch. In LJR, table objects are not stored as a plain hash table with an array part. Instead, our table implementation employed hidden classes, using a design mostly mirroring the hidden class design <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">in JavaScriptCore</a>.</p>
+<p>Hidden class allows efficient <em>inline caching</em>, a technique that drastically speeds up table operations. Briefly speaking, one can think of a hidden class as a hash-consed metadata object that describes the layout of a table object, or (simplified for the purpose of exposition), a hash map from string key to the storage slot in the table storing the value of this string key.</p>
+<p>Let’s use the <code>TableGetById</code> bytecode (aka, <code>TGETS</code> in LuaJIT) as example. <code>TableGetById</code> takes a table <code>T</code> and a fixed constant string <code>k</code> as input, and outputs <code>T[k]</code>.</p>
+<p>Due to the natural use case of dynamic languages, for a fixed <code>TableGetById</code> bytecode, the tables it operates on are likely to have the same hidden class, or only a few different kinds of hidden classes. So <code>TableGetById</code> will cache the most recent hidden class <code>H</code> it saw, as well as <code>H[k]</code>, the storage slot in the table for the constant string key <code>k</code>. When <code>TableGetById</code> is executed on input <code>T</code>, it first check if the hidden class of <code>T</code> is just its cached hidden class <code>H</code>. If so (which is likely), it knows that the result must be stored in slot <code>H[k]</code> of <code>T</code>, so the expensive hash-lookup work (which queries hidden class <code>H</code> to obtain <code>H[k]</code>) can be elided.</p>
+<p>In general, one can characterize the inline caching optimization as the following: there are some generic computation <code>λ : input -&gt; output</code> that can be split into two steps:</p>
+<ol>
+<li>An expensive but idempotent step <code>λ_i : icKey -&gt; ic</code> where <code>icKey</code> is a subset of the <code>input</code> data, and <code>ic</code> is an opaque result.</li>
+<li>A cheap but effectful step <code>λ_e : &lt;input, ic&gt; -&gt; output</code>, that takes the <code>input</code> and the idempotent result <code>ic</code> for <code>input</code> in step 1, and outputs the final output.</li>
+</ol>
+<p><img src="/images/2022-11-22/ic.png" alt="Computation eligible for inline caching can be characterized as above."></p>
+<p>If the computation satisfies such constraint, then one can cache <code>icKey</code> and the corresponding <code>ic</code>. Then on new inputs, if the <code>icKey</code> matches, the expensive idempotent step of computing <code>ic</code> can be safely elided.</p>
+<p>Deegen provided <em>generic inline caching APIs</em> to allow easy employment of inline caching optimization. Specifically:</p>
+<ol>
+<li>The full computation <code>λ</code> is specified as a C++ lambda (called the <code>body</code> lambda).</li>
+<li>The effectful step <code>λ_e</code> is specified as C++ lambdas defined inside the <code>body</code> lambda (called the <code>effect</code> lambdas).</li>
+</ol>
+<p>We allow specifying multiple possible <code>effect</code> lambdas in the <code>body</code> lambda, since the <code>λ_e</code> to execute can often be dependent on the outcome of the idempotent step. However, we require that at most one <code>effect</code> lambda can be executed in each run of the <code>body</code> lambda.</p>
+<p>For example, for <code>TableGetById</code>, the code that employs inline caching would look like the following (simplified for the purpose of exposition):</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">TableGetById</span><span class="params">(TValue tab, TValue key)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// Let's assume 'tab' is indeed a table for simplicity.</span></span><br><span class="line">  HeapPtr&lt;TableObject&gt; t = tab.As&lt;tTable&gt;();</span><br><span class="line">  <span class="comment">// And we know 'key' must be string since the index of</span></span><br><span class="line">  <span class="comment">// TableGetById is required to be a constant string</span></span><br><span class="line">  HeapPtr&lt;String&gt; k = key.As&lt;tString&gt;();</span><br><span class="line">  <span class="comment">// Call API to create an inline cache</span></span><br><span class="line">  ICHandler* ic = MakeInlineCache();</span><br><span class="line">  HiddenClassPtr hc = t.m_hiddenClass;</span><br><span class="line">  <span class="comment">// Make the IC cache on key 'hc'</span></span><br><span class="line">  ic-&gt;Key(hc);</span><br><span class="line">  <span class="comment">// Specify the IC body (the function 'λ')</span></span><br><span class="line">  Return(ic-&gt;Body([=] &#123;</span><br><span class="line">    <span class="comment">// Query hidden class to get value slot in the table</span></span><br><span class="line">    <span class="comment">// This step is idempotent due to the design of hidden class </span></span><br><span class="line">    <span class="keyword">int32_t</span> slot = hc-&gt;Query(k);</span><br><span class="line">    <span class="comment">// Specify the effectful step (the function 'λ_e')</span></span><br><span class="line">    <span class="keyword">if</span> (slot == <span class="number">-1</span>) &#123;     <span class="comment">// not found</span></span><br><span class="line">      <span class="keyword">return</span> ic-&gt;Effect([] &#123; <span class="keyword">return</span> NilValue(); &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> ic-&gt;Effect([=] &#123; <span class="keyword">return</span> t-&gt;storage[slot]; &#125;);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>The precise semantic of the inline caching APIs is the following:</p>
+<ol>
+<li>When <code>ic-&gt;Body()</code> executes for the first time, it will honestly execute the <code>body</code> lambda. However, during the execution, when a <code>ic-&gt;Effect</code> API call is executed, it will create an inline cache<sup class="footnote-ref"><a href="#fn6" id="fnref6">[6]</a></sup> for this bytecode that records the IC key (defined by the <code>ic-&gt;Key()</code> API), as well as all captures of this <code>effect</code> lambda that are <em>defined within</em> the <code>body</code> lambda. These variables are treated as constants (the <code>ic</code> state).</li>
+<li>Next time the <code>ic-&gt;Body</code> executes, compare the cached key against the actual key.</li>
+<li>If the key matches, it will directly execute the previously recorded <code>effect</code> lambda. For each capture of the <code>effect</code> lambda, if the capture is defined inside the <code>body</code> lambda, it will see the cached value recorded in step 1. Otherwise (i.e., the capture is defined as a capture of the <code>body</code> lambda), it will see the fresh value.</li>
+<li>If the key does not match, just execute step 1.</li>
+</ol>
+<p>The precise semantic might look a bit bewildering at first glance. A more intuitive way to understand is that one is only allowed to do idempotent computation inside the <code>body</code> lambda (idempotent is with respect to the cached key and other values known to be constants to this bytecode). All the non-idempotent computations must go to the <code>effect</code> lambda. As long as this rule is followed, Deegen will automatically generate correct implementation that employs the inline caching optimization.</p>
+<p>Deegen also performs exotic optimizations that fuses the ordinal of the <code>effect</code> lambda into the opcode, to save an expensive indirect branch that branches to the correct <code>effect</code> implementation when the inline cache hits. Such optimizations would have required a lot of engineering efforts in a hand-written interpreter. But in Deegen, it is enabled by merely one line: <code>ic-&gt;FuseICIntoInterpreterOpcode()</code>.</p>
+<p>Below is the actual disassembly of the interpreter generated by Deegen, for <code>TableGetById</code> bytecode. The assembly is for a “fused-IC” quickened variant (see above) where the table is known to have no metatable, and the property exists in the inline storage of the table. As before, comments are manually added by me for exposition purposes.</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line">__deegen_interpreter_op_TableGetById_0_fused_ic_1: </span><br><span class="line">    pushq         %rax</span><br><span class="line">    <span class="comment"># decode bytecode slot for the 'table' operand </span></span><br><span class="line">    movzwl        2(%r12), %eax</span><br><span class="line">    <span class="comment"># decode bytecode slot for the 'index' operand</span></span><br><span class="line">    movswq        4(%r12), %rcx</span><br><span class="line">    <span class="comment"># load the bytecode value of 'table'</span></span><br><span class="line">    movq          (%rbp,%rax,8), %r9</span><br><span class="line">    <span class="comment"># load the constant value of 'index' (must be string)</span></span><br><span class="line">    movq          (%rbx,%rcx,8), %rsi</span><br><span class="line">    <span class="comment"># check that 'table' is a heap object value (a pointer)</span></span><br><span class="line">    cmpq          %r15, %r9</span><br><span class="line">    <span class="comment"># if not, branch to slow path (omitted)</span></span><br><span class="line">    jbe           .LBB5_8</span><br><span class="line">    <span class="comment"># decode the destination slot from the bytecode</span></span><br><span class="line">    movzwl        6(%r12), %r10d</span><br><span class="line">    <span class="comment"># load the metadata struct offset for this bytecode</span></span><br><span class="line">    <span class="comment"># the contents of the inline cache is stored there</span></span><br><span class="line">    movl          8(%r12), %edi</span><br><span class="line">    <span class="comment"># compute the pointer to the metadata struct</span></span><br><span class="line">    addq          %rbx, %rdi</span><br><span class="line">    <span class="comment"># load the hidden class of the heap object</span></span><br><span class="line">    movl          %gs:(%r9), %ecx</span><br><span class="line">    <span class="comment"># check if hidden class matches</span></span><br><span class="line">    cmpl          %ecx, (%rdi)</span><br><span class="line">    <span class="comment"># branch to code that calls the IC body if the hidden</span></span><br><span class="line">    <span class="comment"># class does not match (omitted)</span></span><br><span class="line">    jne	          .LBB5_4</span><br><span class="line">    <span class="comment"># The hidden class matched, we know the heap object is</span></span><br><span class="line">    <span class="comment"># a table without metatable, and the value for 'index' </span></span><br><span class="line">    <span class="comment"># is stored in the inline storage of the table, with the</span></span><br><span class="line">    <span class="comment"># slot ordinal recorded in the inline cache</span></span><br><span class="line">    <span class="comment"># Load the slot ordinal from the inline cache</span></span><br><span class="line">    movslq        5(%rdi), %rax</span><br><span class="line">    <span class="comment"># load the value from the inline storage of the table</span></span><br><span class="line">    movq          %gs:16(%r9,%rax,8), %rax</span><br><span class="line">.LBB5_3:</span><br><span class="line">    <span class="comment"># store the value into the destination slot</span></span><br><span class="line">    movq          %rax, (%rbp,%r10,8)</span><br><span class="line">    <span class="comment"># decode next bytecode and dispatch</span></span><br><span class="line">    movzwl        12(%r12), %eax</span><br><span class="line">    addq          <span class="variable">$12</span>, %r12</span><br><span class="line">    movq	__deegen_interpreter_dispatch_table(,%rax,8), %rax</span><br><span class="line">    popq          %rcx</span><br><span class="line">    jmpq          *%rax</span><br></pre></td></tr></table></figure>
+<p>As one can see, in the good case of an IC hit, a <code>TableGetById</code> is executed with a mere 2 branches (one that checks the operand is a heap object, and one that checks the hidden class of the heap object matches the inline-cached value).</p>
+<p>LuaJIT’s hand-written assembly interpreter is highly optimized already. Our interpreter generated by Deegen is also highly optimized, and in many cases, slightly better-optimized than LuaJIT. However, the gain from those low-level optimizations are simply not enough to beat LuaJIT by a significant margin, especially on a modern CPU with very good instruction-level parallelism, where having a few more instructions, a few longer instructions, or even a few more L1-hitting loads have negligible impact on performance. The support of inline caching is one of the most important high-level optimizations we employed that contributes to our performance advantage over LuaJIT.</p>
+<h3 id="Conclusion-Thoughts-and-Future-Works">Conclusion Thoughts and Future Works</h3>
+<p>In this post, we demonstrated how we built the fastest interpreter for Lua (to date) through a novel meta-compiler framework.</p>
+<p>However, automatically generating the fastest Lua interpreter is only the beginning of our story. <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">LuaJIT Remake</a> is designed to be a multi-tier method-based JIT compiler generated by the Deegen framework, and we will generate the baseline JIT, the optimizing JIT, the tiering-up/OSR-exit logic, and even a fourth-tier heavyweight optimizing JIT in the future.</p>
+<p>Finally, Deegen is never designed to be welded to Lua, and maybe in the very far future, we can employ Deegen to generate high-performance VMs at a low engineering cost for other languages as well.</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>The benchmarks are run on my laptop with Intel i7-12700H CPU and 32GB DDR4 memory. All benchmarks are repeated 5 times and the average performance is recorded. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>As a side note, two of the three benchmarks where we lost to LuaJIT are string processing benchmarks. LuaJIT seems to have some advanced string-handling strategy, yielding the speedup. However, the strategy is not perfect: it failed badly on the <code>life</code> benchmark, and as a result, LuaJIT got stomped 3.6x by PUC Lua (and 16x by us) on that benchmark. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>Some of these poor code come from insufficiently-optimized calling convention handling logic (e.g., LLVM often just pours all the spills at function entry for simplicity), and some comes from the register allocator that doesn’t have enough understanding of hot/cold path (so that it believes that hoisting a register move or a stack spill from the cold path into the fast path is an optimization while it actually isn’t). Compilers are always evolving and get better, but at least in this case it isn’t enough. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>One can also imagine an optimization that makes each “case” directly jumps to the next “case”, instead of the switch dispatcher. This is known as “<a href="https://dl.acm.org/doi/abs/10.1145/362248.362270" target="_blank" rel="noopener">direct threading</a>” in the literature for continuation-passing-style-based interpreter, or more widely known as a “computed-goto interpreter” for switch-case-based interpreter (since GCC computed-goto extension is the most straightforward way to implement such an optimization). <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>If one looks at the problem globally, clearly the better solution is to only save all the callee-saved registers once when one enters the interpreter, and restores it when the interpreter finishes, instead of having each bytecode function doing the same work again and again. But it’s impossible to tell the C/C++ compiler that “this function doesn’t need to abide to the calling convention, because by high-level design someone else will do the job fot it”. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn6" class="footnote-item"><p>In the current implementation, for the interpreter, each bytecode is only allowed to keep one inline cache entry, so the newly-created entry always overwrites the existing entry. However, for JIT compilers, each inline cache entry will be a piece of JIT-generated code, so there can be multiple IC entries for each bytecode. <a href="#fnref6" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clasibokp000hgooh62119u60" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-2022-10-02" class="article article-type-post" itemscope itemprop="blogPost">
 
   <header class="article-header">
@@ -172,7 +332,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="cl90lhv8z000gbvonenxkcjii" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clasiboko000ggooh0c4fac8j" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -291,7 +451,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="cl90lhv8y000fbvon3tcog320" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clasibokn000fgooh7r3ode7v" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -418,7 +578,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="cl90lhv8w000ebvon36heb5w6" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clasibokm000egooha4rdephe" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1116,7 +1276,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="cl90lhv97000hbvon4ktn37a6" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clasibol0000igoohfymvg3o6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1196,7 +1356,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="cl90lhv8v000dbvon7xos1pcs" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clasibokl000dgooh18eo1nhw" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1321,7 +1481,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="cl90lhv8u000cbvonecqpbu5q" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clasibokk000cgooham70ee4r" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1433,7 +1593,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="cl90lhv8s000bbvon2mkf6zbw" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clasibokj000bgoohgj4939ri" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1513,7 +1673,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="cl90lhv8r000abvon9j33dssf" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="clasiboki000agoohefoxdpfv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1598,123 +1758,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="cl90lhv8p0009bvonfh2k2lhc" class="article-share-link">
-        <i class="fa fa-share"></i> Share
-      </a>
-    -->
-      
-      
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-2021-09-20" class="article article-type-post" itemscope itemprop="blogPost">
-
-  <header class="article-header">
-    
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="2021/09/20/2021-09-20/">Understanding JavaScriptCore&#39;s DFG JIT: CPS Rethreading Pass</a>
-    </h1>
-  
-
-
-  </header>
-
-  <div class="article-meta">
-    <div class="article-datetime">
-  <a href="2021/09/20/2021-09-20/" class="article-date"><time datetime="2021-09-20T00:00:00.000Z" itemprop="datePublished">2021-09-20</time></a>
-</div>
-
-    
-    
-
-  </div>
-  <div class="article-inner">
-
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>This is another note on JavaScriptCore (JSC)'s DFG JIT. The topic today is on DFG’s IR design and a related optimizer pass called <em>CPS Rethreading</em>. As before, disclaimer first:</p>
-<blockquote>
-<p><strong>Disclaimer</strong><br>
-I do not work on JavaScriptCore, and my experience with Javascript is very limited. Everything described in this post is from my understanding of the JSC source code. They may be inaccurate or outright wrong. Please feel free to email me at haoranxu510 [at] gmail.com for any corrections and discussions.</p>
-</blockquote>
-<!-- In my opinion, the most interesting design choices of DFG's IR are centered around how it handles variables. I will start with a quick introduction of DFG's IR. -->
-<p>In DFG’s IR, each function consists of a list of <a href="https://en.wikipedia.org/wiki/Basic_block" target="_blank" rel="noopener">basic blocks</a>, and each basic block contains a list of IR intructions. An IR instruction is also implicitly the value this instruction produces, and can be used as operand to other IR instructions. Everything till now is similar to a typical <a href="https://en.wikipedia.org/wiki/Static_single_assignment_form" target="_blank" rel="noopener">SSA representation</a>. However, there are two important differences:</p>
-<ol>
-<li>Each IR instruction can only use the SSA values (implicitly produced by other IR instructions) in the <strong>same</strong> basic block.</li>
-<li>Unlike in SSA, DFG does <strong>not</strong> have an IR instruction named “Phi”. Instead, in DFG’s IR, each function has a list of “slots”, which are local variables that one can read from and write to. There are two IR instructions <code>GetLocal</code> and <code>SetLocal</code><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> which allows reading/writing a slot respectively.</li>
-</ol>
-<p>As one would expect, a <code>GetLocal</code> takes a slot number constant as operand, and produces an SSA value. A <code>SetLocal</code> takes an SSA value (i.e., an IR instruction that produces a value) and a slot number constant as operands, and produces nothing.</p>
-<p>The above representation (called <code>LoadStore</code> form in JSC) is very flexible for users to generate the IR, but not good for optimization, because in such representation it is hard to reason about the data stored in local variables. This is where the CPS Rethreading pass comes in, which transforms the graph to the so-called <code>ThreadedCPS</code> form. The CPS rethreading pass optimizes away redundant loads, adds <strong>auxiliary</strong> Phi nodes that describe the data flow of loads and stores, and also performs <a href="https://en.wikipedia.org/wiki/Live_variable_analysis" target="_blank" rel="noopener">liveness analysis</a>.</p>
-<p>The most interesting design choice here is that the Phi nodes are auxiliary and optional, and are <em>not</em> part of the IR graph: the correctness of the IR graph is not affected even if all Phi nodes were removed, and by doing so, it only puts the graph back to <code>LoadStore</code> form.</p>
-<p>As a result, a transformation pass may choose to either maintain the Phi nodes and the liveness information, or simply mark that the graph has been put back to <code>LoadStore</code> form (and then the CPS Rethreading pass can be called to bring it to <code>ThreadedCPS</code> form again).</p>
-<p>The extra information available in <code>ThreadedCPS</code> form is the following:</p>
-<ol>
-<li>Each basic block gets a list of auxiliary Phi nodes. Unlike Phi nodes in SSA form, the Phi node here is parametrized by a slot number constant, so it denotes the value of that local variable at the start of the basic block. Those Phi nodes are only referenced by other Phi nodes (from other basic blocks) and by the stuffs below. They are never used by a normal IR instruction as operand.</li>
-<li>Each basic block gets two auxiliary arrays <code>variablesAtHead</code> and <code>variablesAtTail</code> of length <code>N</code> (where <code>N</code> is the total number of local variable slots of the function). The <code>variablesAtHead</code> array denotes the value of all <a href="https://en.wikipedia.org/wiki/Live_variable_analysis" target="_blank" rel="noopener">live variables</a> at the start of the basic block. The <code>variablesAtTail</code> array denotes the value of all available (defined here as either live at the start of the basic block, or modified inside the basic block) variables at the end of the basic block.</li>
-<li>Each <code>GetLocal</code> node gets an auxiliary pointer which denotes the value this <code>GetLocal</code> would yield. The pointer points to either a value-producing instruction in the same basic block (which means the <code>GetLocal</code> would yield that value), or a Phi node in the same basic block (which means the <code>GetLocal</code> would yield the value of the Phi).</li>
-<li>Redundant <code>GetLocal</code>s to the same local variable in the same basic block are removed. There are two cases:<br>
-(a). A <code>GetLocal</code> after another <code>GetLocal</code> can be replaced by the previous <code>GetLocal</code>.<br>
-(b). A <code>GetLocal</code> after a <code>SetLocal</code> can be replaced by the operand of the <code>SetLocal</code>.</li>
-</ol>
-<p>There are a few points that are worth to note:</p>
-<ol>
-<li>Point (2) above implies that the total space consumption is <code>O(NM)</code> where <code>N</code> is the total number of local variable slots and <code>M</code> is the number of basic blocks.</li>
-<li>Redundant <code>SetLocal</code>s to the same local variable inside the same basic block are not removed. Probably it has something to do with OSR.</li>
-<li>The design above makes sure that all the extra information (most notably, the Phi nodes) are auxiliary: they can be safely dropped without affecting correctness.</li>
-</ol>
-<h4 id="The-Algorithm">The Algorithm</h4>
-<p>The algorithm is implemented in <a href="https://github.com/WebKit/WebKit/blob/8d5e5fd60f0712a47548a3b84c397836c481db75/Source/JavaScriptCore/dfg/DFGCPSRethreadingPhase.cpp" target="_blank" rel="noopener">DFGCPSRethreadingPhase.cpp</a>. For simplicity, as before, we will focus on <code>GetLocal</code> and <code>SetLocal</code> only, and ignore <code>Flush</code>, <code>PhantomLocal</code>, <code>SetArgumentDefinitely</code> and <code>SetArgumentMaybe</code> related logic.</p>
-<p>The first step of the algorithm resets the existing state in case the pass has been invoked earlier. It clears the <code>variablesAtHead</code> and <code>variablesAtTail</code> array for each basic block, removes all Phi nodes, and reserves the space for the annotation pointer for each <code>GetLocal</code> node (by simply repurposes the unused <code>child1</code> field).</p>
-<p>In the second step, for each basic block, it iterates all the IR instructions from up to down. The <code>variablesAtTail</code> array is used as a scratchpad to keep track of the current value of each variable at the current IR instruction being iterated.</p>
-<ol>
-<li>If it is a <code>GetLocal</code> instruction, and <code>variablesAtTail[i]</code> is <code>nullptr</code>, then this is the first time the variable <code>i</code> is used in this basic block, and the value of this variable should come from a Phi node. So we create a Phi node and store it into <code>variablesAtHead[i]</code>. The <code>variablesAtTail[i]</code> should also be updated to the current <code>GetLocal</code> node<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>.</li>
-<li>If it is a <code>GetLocal</code> instruction, but <code>variablesAtTail[i]</code> is not <code>nullptr</code>, then the local variable <code>i</code> has been used in this basic block. Thus, this <code>GetLocal</code> can always be removed from the graph by replacing it with another node (with detail described earlier). Thanks to the design of the IR, this <code>GetLocal</code> may only be used by later IR instructions in the same basic block, so the replacement can be done easily<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</li>
-<li>If it is a <code>StoreLocal</code> instruction, then we can simply update the corresponding slot in <code>variablesAtTail</code>.</li>
-</ol>
-<p>The third step builds the incoming edges for all Phi nodes. The Phi nodes created in the previous step are put into a list<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>. The algorithm iterates until the list gets empty. Each time an element, let’s say, a Phi node for some variable <code>i</code> in basic block <code>B</code>, is removed from the list. Then for all predecessors <code>P</code> of basic block <code>B</code>:</p>
-<ol>
-<li>If <code>P.variablesAtTail[i]</code> is <code>nullptr</code>, then there isn’t a Phi node in <code>P</code> for local variable <code>i</code> yet. So, a new one is created, and <code>P.variablesAtHead[i]</code> and <code>P.variablesAtTail[i]</code> is updated. The newly created Phi node is put into the list.</li>
-<li>Otherwise, the predecessor of the current Phi node for that basic block should simply be <code>P.variablesAtTail[i]</code><sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>.</li>
-</ol>
-<p>Note that the second step and the third step also guarantee that <code>variablesAtHead</code> correctly contains the information for all live variables at the start of a basic block.</p>
-<h4 id="Conclusion">Conclusion</h4>
-<p>In my opinion, the design of the DFG IR is really neat. The standard SSA form is best suited for optimization, but it is both difficult and slow to construct and transform. The DFG IR made interesting design choices that intentionally deviates from the standard SSA form to improve compilation speed and usability. This matches DFG JIT’s design goal as a fast optimizer. The CPS Rethreading pass is a neat algorithm that serves multiple purposes simultaneously: to simplify and canonicalize the IR, to construct a SSA-like Phi data flow, and to perform liveness analysis.</p>
-<hr>
-<h5 id="Footnotes">Footnotes</h5>
-<hr class="footnotes-sep">
-<section class="footnotes">
-<ol class="footnotes-list">
-<li id="fn1" class="footnote-item"><p>In fact, there are also <code>Flush</code> and <code>PhantomLocal</code> which are related to OSR, and <code>SetArgumentDefinitely</code> and <code>SetArgumentMaybe</code> which are related to special casing of arguments, but we will overlook them in this article for simplicity. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn2" class="footnote-item"><p>It seems like the algorithm intentionally updates it to the <code>GetLocal</code> node instead of the Phi node because it can provide more information to users: one can easily trace to the Phi from the <code>GetLocal</code> but not otherwise around. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn3" class="footnote-item"><p>Specifically, all we need to do is to maintain the replacement map, and at the time we iterate a node, we check if any of its operands are in the replacement map. If yes, we replace it. The replacement map can simply be a <code>std::map</code>, but a hash table lookup is still slow, so in JSC there is a 8-byte scratch field in each <code>Node</code> struct that can be used for this purpose (or other similar purposes). <a href="#fnref3" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn4" class="footnote-item"><p>In fact, there are three different kinds of local variables: <code>Argument</code>, <code>Local</code> and <code>Tmp</code>. So correspondingly, there are three different lists. I think it’s only an implementation detail: the three list could have been merged into one, but the current code design (where the <code>Kind</code> is used as a template parameter in several APIs) makes it easiest to just have three lists. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
-</li>
-<li id="fn5" class="footnote-item"><p>The actual implementation is a bit more complex. If the predecessor node is a <code>GetLocal</code>, it would further forward it to the value of the <code>GetLocal</code> (as computed in the auxiliary pointer), but if the predecessor node is a <code>StoreLocal</code>, it won’t forward it to its operand. But these are only implementation details to best fit the needs of the clients (the other optimization passes), so we omit them to highlight the core idea. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
-</li>
-</ol>
-</section>
-<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
-      
-    </div>
-
-    
-      
-
-    
-
-    <footer class="article-footer">
-    <!--
-      <a data-url="https://sillycross.github.io/2021/09/20/2021-09-20/" data-id="cl90lhv8o0008bvonar9f33b0" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="clasibokh0009gooheit6cvnw" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1751,7 +1795,7 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
   
   <div class="sidebar-module">
     <h4>Archives</h4>
-    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">8</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
   </div>
 
 
@@ -1760,6 +1804,10 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
   <div class="sidebar-module">
     <h4>Recents</h4>
     <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
+        </li>
       
         <li>
           <a href="2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
@@ -1775,10 +1823,6 @@ I do not work on JavaScriptCore, and my experience with Javascript is very limit
       
         <li>
           <a href="2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
-        </li>
-      
-        <li>
-          <a href="2022/05/31/2022-05-31/">NP70PNP + Ubuntu Tweak Notes</a>
         </li>
       
     </ul>
