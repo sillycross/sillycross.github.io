@@ -147,11 +147,11 @@
 <p>For example, at LLVM IR level, it is trivial to make a function use <code>GHC</code> calling convention (a convention with no callee-saved registers) and properly transform the function to unify all the function prototype, thus solving the two major problems with <code>musttail</code> tail calls that is unsolvable at C/C++ level. In fact, <code>Deegen</code> (our meta-compiler that generates the interpreter) does a <em>lot</em> more than producing the tail calls, which we will cover in the rest of this post.</p>
 <h3 id="Hide-All-the-Ugliness-Behind-Nice-APIs">Hide All the Ugliness Behind Nice APIs</h3>
 <p>In Deegen framework, the semantics of each bytecode is described by a C++ function. One of the most important design philosophy of Deegen is to abstract away all the nasty parts of an interpreter. I will demonstrate with a simplified example for the <code>Add</code> bytecode:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() &amp;&amp; rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>The function <code>Add</code> takes two boxed values (a value along with its type) <code>lhs</code> and <code>rhs</code> as input. It first checks if both <code>lhs</code> and <code>rhs</code> are <code>double</code> (the <code>Is&lt;tDouble&gt;()</code> check). If not, we throw out an error. Otherwise, we add them together by casting the two boxed value to its actual type (<code>double</code>) and do a normal <code>double</code> addition. Finally, we create a new boxed value of <code>double</code> type using <code>TValue::Create&lt;tDouble&gt;()</code>, return it as the result of the bytecode and dispatch to the next bytecode, through the <code>Return()</code> API call (note that this is not the C keyword <code>return</code>).</p>
 <p>Notice how much nasty work we have abstracted away: decoding the bytecode, loading the operands and constants, throwing out errors, storing results to the stack frame, and dispatching to the next bytecode. All of these interpreter details either happen automatically, or happen with a simple API call (e.g., <code>ThrowError</code> or <code>Return</code>).</p>
 <p>Now let’s extend our <code>Add</code> to add support for the Lua <code>__add</code> metamethod semantics:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">AddContinuation</span><span class="params">(TValue <span class="comment">/*lhs*/</span>, TValue <span class="comment">/*rhs*/</span>)</span> </span>&#123;</span><br><span class="line">  Return(GetReturnValueAtOrd(<span class="number">0</span>));</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    <span class="comment">/* we want to call metamethod now */</span></span><br><span class="line">    HeapPtr&lt;FunctionObject&gt; mm = GetMMForAdd(lhs, rhs);</span><br><span class="line">    MakeCall(mm, lhs, rhs, AddContinuation);</span><br><span class="line">    <span class="comment">/* MakeCall never returns */</span></span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() &amp;&amp; rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">AddContinuation</span><span class="params">(TValue <span class="comment">/*lhs*/</span>, TValue <span class="comment">/*rhs*/</span>)</span> </span>&#123;</span><br><span class="line">  Return(GetReturnValueAtOrd(<span class="number">0</span>));</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    <span class="comment">/* we want to call metamethod now */</span></span><br><span class="line">    HeapPtr&lt;FunctionObject&gt; mm = GetMMForAdd(lhs, rhs);</span><br><span class="line">    MakeCall(mm, lhs, rhs, AddContinuation);</span><br><span class="line">    <span class="comment">/* MakeCall never returns */</span></span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>The <code>GetMMForAdd</code> is some arbitrary runtime function call that gets the metamethod. Deegen does not care about its implementation: the bytecode semantic description is just a normal C++ function, so it can do anything allowed by C++, of course including calling other C++ functions. The interesting part is the <code>MakeCall</code> API. It allows you to call other Lua functions with the specified parameters, and most importantly, a <em>return continuation</em>. The <code>MakeCall</code> API does not return. Instead, when the called function returns, control will be returned to the return continuation (the <code>AddContinuation</code> function). The return continuation function is similar to the bytecode function: it has access to all the bytecode operands, and additionally, it has access to all the values returned from the call. In our case, the semantics for Lua <code>__add</code> is to simply return the first value returned by the call as the result of the bytecode, so we use <code>GetReturnValueAtOrd(0)</code> to get that value, and use the <code>Return</code> API we have covered earlier to complete the <code>Add</code> bytecode and dispatch to the next bytecode.</p>
 <p>Again, notice how much nasty work that we have abstracted away: all the details of creating the new Lua frame, adjusting the parameters and return values (overflowing arguments needs to go to variadic arg if callee accepts it, insufficient arguments need to get <code>nil</code>), transferring control to the callee functions, etc., are all hidden by a mere <code>MakeCall</code> API. Furthermore, all of these are language-neutral: if we were to target some other languages (e.g., Python), most of the Deegen code that implements the <code>MakeCall</code> could be reused.</p>
 <p>The use of return continuation is designed to support Lua coroutines. Since Lua coroutines are stackful, and <code>yield</code> can happen anywhere (as <code>yield</code> is not a Lua keyword, but a library function), we need to make sure that the C stack is empty at any bytecode boundary, so we can simply tail call to the other continuation to accomplish a coroutine switch. This design also has a few advantages compared with PUC Lua’s coroutine implementation:</p>
@@ -172,7 +172,7 @@
 <p>Finally, Deegen will generate a user-friendly <code>CreateAdd</code> function for the user frontend parser to emit a <code>Add</code> bytecode. For example, the frontend parser can write the following code to generate an <code>Add</code> bytecode that adds bytecode slot <code>1</code> with constant <code>123.4</code>, and stores the output into slot <code>2</code>:</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">bytecodeBuilder.CreateAdd(&#123;</span><br><span class="line">  .lhs = Local(<span class="number">1</span>),</span><br><span class="line">  .rhs = Cst&lt;tDouble&gt;(<span class="number">123.4</span>),</span><br><span class="line">  .output = Local(<span class="number">2</span>)</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
 <p>The implementation of <code>CreateAdd</code> will automatically insert constants into the constant table, select the most suitable variant based in the input types (or throwing out an error if no satisfying variant can be found), and append the bytecode into the bytecode stream. The concrete layout of the bytecode in the bytecode stream is fully hidden from the user. This provides a maximally user-friendly and robust API for the user parser logic to build the bytecode stream.</p>
-<p><a href="https://github.com/luajit-remake/luajit-remake/blob/master/annotated/bytecodes/arithmetic_bytecodes.cpp" target="_blank" rel="noopener">This link</a> is the real implementation of all the Lua arithemtic bytecodes in LuaJIT Remake. It used a few features that we haven’t covered yet: the <code>DEEGEN_DEFINE_BYTECODE_TEMPLATE</code> macro allows defining a template of bytecodes, so <code>Add</code>, <code>Sub</code>, <code>Mul</code>, etc., can all be defined at once, minimizing engineering cost. The <code>EnableHotColdSplitting</code> API allows automatically hot-cold-splitting based on speculated and proven input operand types, and splits out the cold path into a dedicated function, which improves the final code quality (recall the earlier discussion on the importance of hot-cold code splitting?).</p>
+<p><a href="https://github.com/luajit-remake/luajit-remake/blob/f8fb972ec91c28b849bd263f164832f0ff434d1f/annotated/bytecodes/arithmetic_bytecodes.cpp" target="_blank" rel="noopener">This link</a> is the real implementation of all the Lua arithemtic bytecodes in LuaJIT Remake. It used a few features that we haven’t covered yet: the <code>DEEGEN_DEFINE_BYTECODE_TEMPLATE</code> macro allows defining a template of bytecodes, so <code>Add</code>, <code>Sub</code>, <code>Mul</code>, etc., can all be defined at once, minimizing engineering cost. The <code>EnableHotColdSplitting</code> API allows automatically hot-cold-splitting based on speculated and proven input operand types, and splits out the cold path into a dedicated function, which improves the final code quality (recall the earlier discussion on the importance of hot-cold code splitting?).</p>
 <p>And below is the actual disassembly of the interpreter generated by Deegen for Lua’s <code>AddVV</code> bytecode. Comments are manually added by me for exposition purposes:</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">__deegen_interpreter_op_Add_0:</span><br><span class="line">    <span class="comment"># decode 'lhs' from bytecode stream</span></span><br><span class="line">    movzwl      2(%r12), %eax</span><br><span class="line">    <span class="comment"># decode 'rhs' from bytecode stream</span></span><br><span class="line">    movzwl      4(%r12), %ecx</span><br><span class="line">    <span class="comment"># load the bytecode value at slot 'lhs'</span></span><br><span class="line">    movsd       (%rbp,%rax,8), %xmm1</span><br><span class="line">    <span class="comment"># load the bytecode value at slot 'rhs'</span></span><br><span class="line">    movsd       (%rbp,%rcx,8), %xmm2</span><br><span class="line">    <span class="comment"># check if either value is NaN</span></span><br><span class="line">    <span class="comment"># Note that due to our boxing scheme, </span></span><br><span class="line">    <span class="comment"># non-double value will exhibit as NaN when viewed as double</span></span><br><span class="line">    <span class="comment"># so this checks if input has double NaN or non-double value</span></span><br><span class="line">    ucomisd     %xmm2, %xmm1</span><br><span class="line">    <span class="comment"># branch if input has double NaN or non-double values</span></span><br><span class="line">    jp          .LBB0_1</span><br><span class="line">    <span class="comment"># decode the destination slot from bytecode stream</span></span><br><span class="line">    movzwl      6(%r12), %eax</span><br><span class="line">    <span class="comment"># execute the add</span></span><br><span class="line">    addsd       %xmm2, %xmm1</span><br><span class="line">    <span class="comment"># store result to destination slot</span></span><br><span class="line">    movsd       %xmm1, (%rbp,%rax,8)</span><br><span class="line">    <span class="comment"># decode next bytecode opcode</span></span><br><span class="line">    movzwl      8(%r12), %eax</span><br><span class="line">    <span class="comment"># advance bytecode pointer to next bytecode</span></span><br><span class="line">    addq        <span class="variable">$8</span>, %r12</span><br><span class="line">    <span class="comment"># load the interpreter function for next bytecode</span></span><br><span class="line">    movq        __deegen_interpreter_dispatch_table(,%rax,8), %rax</span><br><span class="line">    <span class="comment"># dispatch to next bytecode</span></span><br><span class="line">    jmpq        *%rax</span><br><span class="line">.LBB0_1:</span><br><span class="line">    <span class="comment"># branch to automatically generated slowpath (omitted)</span></span><br><span class="line">    jmp         __deegen_interpreter_op_Add_0_quickening_slowpath</span><br></pre></td></tr></table></figure>
 <p>As one can see, thanks to all of our optimizations, the quality of the assembly generated by Deegen has no problem rivalling hand-written assembly.</p>
@@ -243,7 +243,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clasibokp000hgooh62119u60" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clat56qz0000hceoye72x7ryx" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -332,7 +332,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clasiboko000ggooh0c4fac8j" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clat56qyz000gceoyhjlicjxe" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -451,7 +451,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clasibokn000fgooh7r3ode7v" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clat56qyy000fceoy5di4hhxq" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -578,7 +578,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clasibokm000egooha4rdephe" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clat56qyx000eceoydzbxhkx1" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1276,7 +1276,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clasibol0000igoohfymvg3o6" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clat56qz4000iceoy22ao437c" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1356,7 +1356,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clasibokl000dgooh18eo1nhw" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clat56qyw000dceoy0clkcjt0" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1481,7 +1481,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clasibokk000cgooham70ee4r" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clat56qyv000cceoy5fnu4uyp" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1593,7 +1593,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clasibokj000bgoohgj4939ri" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clat56qyu000bceoy63hm8e34" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1673,7 +1673,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="clasiboki000agoohefoxdpfv" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="clat56qyt000aceoy6t1z63g0" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1758,7 +1758,7 @@ Examples of this pitfall are “perfect plans” that are designed without backu
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="clasibokh0009gooheit6cvnw" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2021/10/24/2021-10-24/" data-id="clat56qyr0009ceoy45wlea7g" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
