@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Building a baseline JIT for Lua automatically | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series of posts.I’m trying to make this post self-contained, but feel free to read the prequel for mo">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Building a baseline JIT for Lua automatically">
+<meta property="og:url" content="https://sillycross.github.io/draft2/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series of posts.I’m trying to make this post self-contained, but feel free to read the prequel for mo">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-jit-pipeline.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/ic-idea.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/vm-archs.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/baseline-jit-arch.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/call-bytecode-main-logic.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/call-bytecode-direct-call-ic-1.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/call-bytecode-closure-call-ic-1.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/callbr-example.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/ic-extraction.png">
+<meta property="article:published_time" content="2023-05-05T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-05-05T02:58:19.866Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
+  
+    <link rel="alternate" href="../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    
+<link rel="stylesheet" href="../css/source_code_pro.css">
+
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+  
+<link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css">
+
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  
+<link rel="stylesheet" href="../css/styles.css">
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="page-" class="article article-type-page" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Building a baseline JIT for Lua automatically
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2023-05-05T00:00:00.000Z" itemprop="datePublished">2023-05-05</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p><text style="color:red">This is a draft. Please do not distribute the URL to public (forums etc).</text></p>
+<blockquote>
+<p><text style="font-size:15px;">This is the Part 2 of a series of posts.<br>I’m trying to make this post self-contained, but feel free to read the prequel for more context: <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></text></p>
+</blockquote>
+<p>A high-performance VM for a dynamic language is never easy to build. If I were to characterize the common approach used by the existing state-of-the-art VMs (e.g., <a href="https://github.com/WebKit/WebKit/tree/main/Source/JavaScriptCore" target="_blank" rel="noopener">JavaScriptCore</a>, <a href="https://v8.dev/" target="_blank" rel="noopener">V8</a>, <a href="https://luajit.org/" target="_blank" rel="noopener">LuaJIT</a>) in one word, that is: <em>assembly</em>.</p>
+<p>The best interpreters are hand-coded in assembly. The baseline JIT compiler<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> is more assembly, plus an assembler to assemble them to machine code at runtime. The optimizing JIT compiler is even more assembly among other things<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>.</p>
+<h3 id="Deegen-High-Performance-VMs-at-Low-Engineering-Cost">Deegen: High Performance VMs at Low Engineering Cost</h3>
+<p><em>Deegen</em> is my research meta-compiler to make high-performance VMs easier to write. Instead of hand-rolling assembly, Deegen takes in a semantic description of the VM bytecodes in C++, and use it as the single source of truth to <em>automatically generate</em> a high-performance VM, as illustrated below.</p>
+<p><img src="/images/2023-05-12/deegen-arch.png" alt="The ultimate vision and current state of Deegen"></p>
+<p>In <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">a prior post</a>, we have demonstrated how we used Deegen to build the fastest Lua 5.1 interpreter to date, outperforming LuaJIT’s interpreter by an average of 34% across a variety of benchmarks. The VM was named <em>LuaJIT Remake</em>, even though it had no JIT tiers at that time.</p>
+<p>Today, after months of additional work, <em>LuaJIT Remake</em> is finally a JIT-capable VM. It is now equipped with a state-of-the-art baseline JIT compiler, automatically generated by Deegen. The baseline JIT features:</p>
+<ul>
+<li>Extremely fast compilation speed.</li>
+<li>High-quality machine code (under the design constraints of a baseline JIT).</li>
+<li>Automatic call inline caching (IC) with two modes (direct/closure call).</li>
+<li>Automatic generic inline caching (IC) <a href="/2022/11/22/2022-11-22/#deegen_generic_inline_caching_api">driven by Deegen API</a>.</li>
+<li>Self-modifying-code-based IC implementation for best performance.</li>
+<li>Hot-cold-splitted JIT code for less branches and better code locality.</li>
+</ul>
+<p>It is important to note that the baseline JIT is generated from the <em>same</em> bytecode semantic description that Deegen uses to generate the interpreter. Therefore, from a language implementer’s view, the baseline JIT comes <em>for free</em>. There is no need to have any assembly knowledge, no need to manually engineer the JIT, and no need to manually keep the JIT updated with new language features – Deegen does all the work automatically!</p>
+<p>Of course, this is no easy feat. In order to generate the baseline JIT automatically, a sophiscated build-time pipeline is employed, as illustrated below.</p>
+<p><img src="/images/2023-05-12/deegen-jit-pipeline.png" alt="The pipeline that automatically generates the baseline JIT from bytecode semantics"></p>
+<p>Except that machine code is generated by <em>Copy-and-Patch</em> at runtime (we’ll cover it in a minute), the baseline JIT generated by Deegen heavily follows the design of the <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">baseline JIT in JavaScriptCore</a>, and has employed most of their optimizations. As such, we claim that our baseline JIT qualifies as a state-of-the-art.</p>
+<p>In the rest of the post, we will explore the internals of how Deegen generates the baseline JIT in more detail. It is organized as follows:</p>
+<ul>
+<li>A gentle introduction of the relavent backgrounds (VM, JIT, IC, etc.).</li>
+<li>An overview of the Copy-and-Patch technique, the core tool employed by the generated JIT to generate machine code at runtime.</li>
+<li>How Deegen further extends Copy-and-Patch to fully automate the process and fit it for the domain-specific use cases of dynamic languages.</li>
+<li>An end-to-end example of the machine code generated by the baseline JIT.</li>
+<li>Performance evaluation and conclusion thoughts.</li>
+</ul>
+<h3 id="Background-a-name-deegen-baseline-jit-background-section-a">Background<a name="deegen_baseline_jit_background_section"></a></h3>
+<div id="folded_modern_dynamic_language_vm_background_section">
+<p>Not everyone is familiar with topics like modern dynamic language VM, multi-tier JIT compilers, baseline JIT, speculative compilation, inline caching, OSR exit…  Therefore, I prepared a background section to gently introduce the background contexts for this post.</p>
+<p>Due to its length, I folded this section by default. <a style="cursor:pointer" onclick="document.getElementById('modern_dynamic_language_vm_background_section').style.display='inline'; document.getElementById('folded_modern_dynamic_language_vm_background_section').style.display = 'none';">To unfold, click here</a>.</p>
+</div><div id="modern_dynamic_language_vm_background_section" style="display:none">
+<p>Before we start, let’s cover some backgrounds about dynamic languages, VM and JIT compilation. It might be a bit lengthy, but IMO this topic is really a piece of little known gemstone and worth elaboration. If you are already familiar, feel free to <a href="#after_background_section">skip to the next section</a>.</p>
+<h4 id="AOT-Compiler-JIT-Compiler-and-Multi-tier-JIT-Compiler">AOT Compiler, JIT Compiler and Multi-tier JIT Compiler</h4>
+<p>Unlike static languages such as C/C++, which are ahead-of-time (AOT) compiled to a native executable, programs written in a dynamic language have to execute in a virtual machine (VM). You might ask: why can’t we AOT compile them to native code like C/C++? The main reason<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup> is that it is impossible to statically generate efficient native code from a dynamic language program. As shown by <a href="https://en.wikipedia.org/wiki/HipHop_for_PHP" target="_blank" rel="noopener">HPHPc</a> and the early days of <a href="https://github.com/facebook/hhvm" target="_blank" rel="noopener">HHVM</a>, forcefully doing so is possible but not worthy: one could get a small performance gain, but it comes at a huge memory overhead<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>.</p>
+<p>Nevertheless, interpreters are intrinsically (much) slower than native code. That’s where Just-in-Time (JIT) compilers come in, which identifies the hot part of the dynamic lanugage program, and dynamically compile it to native code at runtime. By doing compilation at runtime and for hot code only, performance is improved without sacrificing the advantages of dynamic languages.</p>
+<p>However, since JIT compilation happens at runtime, the time spent by the JIT compiler to generate the code (startup delay) is directly reflected in the total execution time. And there is no free lunch: in order to generate even slightly better code, one must spend a lot more time in compilation.</p>
+<p>The result of this game is the multi-tier JIT strategy. A <em>baseline JIT compiler</em>, which excels at fast compilation but only generates mediocre code, is used to compile functions as soon as they reach a low hotness threshold. Then, for functions that eventually gets really hot, the <em>optimizing JIT compiler</em> kicks in to generate better code for these function at a much higher compilation cost.</p>
+<p>Orthogonal to the multi-tier JIT strategy, another equally important concept in modern dynamic language VM is <em>speculative compilation</em>. Recall that dynamic language programs cannot be AOT-compiled to efficient native code. Speculative compilation is exactly how JIT compilers made it possible.</p>
+<p>There are two forms of speculations: <em>inline caching</em> and <em>type speculation</em>.</p>
+<h4 id="Inline-Caching">Inline Caching</h4>
+<p>Inline caching (IC) works by predicting the <em>value</em> of certain operands. For example, for the code <code>f()</code> which calls <code>f</code>, it’s likely that every time this line of code is run, the function object <code>f</code> always holds the same function<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>. So the JIT, after having seen the value of <code>f</code> once, may predict that future executions will see that value again, and speculatively devirtualize the call to a direct call.</p>
+<p>Every VM tier can benefit from IC, including the interpreter. However, IC is most powerful at the JIT tiers, as the ability to JIT code allows one to produce the most specialized code without any unnecessary overhead.</p>
+<p>At machine code level, the most efficient implementation of IC requires the use of self-modifying code. The idea is like below:</p>
+<p><img src="/images/2023-05-12/ic-idea.png" alt="How inline caching (IC) works at machine code level"></p>
+<p>The blue region indicates the self-modifying code, where in this example it is simply a patchable <code>jmp</code> instruction. Initially, there are not any IC cases, and the patchable jump simply jumps to the IC-miss slow path.</p>
+<p>When the code is executed for the first time, the patchable jump will bring control to the IC-miss slow path. The IC-miss slow path will JIT compile a piece of code stub containing the specialized logic based on the IC key it sees (the “IC case #1” in figure), and repatch the <code>jmp</code> instruction to jump to the code stub instead. So next time, if the code is executed with the same IC key, control will reach the JIT’ed code stub and the specialized fast path will be executed.</p>
+<p>This process can be repeated. All the JIT’ed IC code stubs are chained together, so that if the first code stub misses, control will be transferred to the next one<sup class="footnote-ref"><a href="#fn6" id="fnref6">[6]</a></sup>, and the last one transfers control to the IC miss slow path, which will JIT-compile a new code stub and chain it into the stub chain.</p>
+<p>Inline caching allows one to speculatively generate optimized code based on the prior executions, largely alleviating the overhead from the dynamic nature of dynamic languages.</p>
+<p>Inline caching is especially powerful when combined with <a href="https://dl.acm.org/doi/10.1145/74878.74884" target="_blank" rel="noopener"><em>hidden class</em></a>, which uses a hash-consed meta-object (the hidden class) to identify objects with the same layouts. With IC and HC, object property access can often be speculatively simplified down to a few instructions.</p>
+<h4 id="Type-Speculation-and-OSR-Exit">Type Speculation and OSR-Exit</h4>
+<p>Type speculation is another important speculative optimization. Unlike inline caching, which only speeds up the internal execution of a bytecode and has no global effects, type speculation works across bytecodes, and can drastically simplify the logic of a function.</p>
+<p>As the name suggests, type speculation works by predicting the <em>type</em> of certain operands. It relies on the following observation: in most practical programs, the operand types at a given program site are predictable. For example, it’s rare that an <code>a + b</code> is executed in a loop where <code>a</code> is sometimes a number, sometimes a string, and sometimes an object.</p>
+<p>Now, if we speculate that an <code>a + b</code> at a program site is likely a numeric add, we will check at runtime that <code>a</code> and <code>b</code> are numbers. However, crucially, if the check fails at runtime (which is unlikely), we will <em>not</em> branch to a slow path. Instead, we <em>bail out</em> from the optimized JIT’ed code, and continue execution in an unoptimized lower VM tier – this is called an <em>OSR exit</em><sup class="footnote-ref"><a href="#fn7" id="fnref7">[7]</a></sup>.</p>
+<p>It is important to understand the difference between an OSR exit and a slow path: in an OSR exit, we bail out from the optimized code and never return to it. This allows the compiler to do optimizations after <code>a + b</code> based on the assumption that <code>a + b</code> is a numeric add (so that it knows <code>a</code> and <code>b</code> must be numeric, and <code>a + b</code> has no side effects, for example): if the assumption turns out to be false at runtime, since we will bail out from the code, none of the later code relying on the false assumption will be executed.</p>
+<p>Type speculation and OSR exit open up opportunities for more optimizations. For example, consider <code>c = a + b; d = a + c</code>. If <code>a + b</code> is speculated to be a numeric add, we know for sure <code>a</code>, <code>b</code> and <code>c</code> must be numbers after the operation (as otherwise we would have OSR-exited). So now we know for sure the expression <code>a + c</code> is also a numeric add, so it needs no type check at all.</p>
+<p>Nevertheless, as one can see, type speculation requires expensive analysis of the function, and introduces the complexity of OSR exit. Therefore, type speculation is typically only performed at the optimizing JIT level. Since the focus of this post is the baseline JIT, we will leave the details of type speculation, OSR exit, and the many different optimizations that they enabled to a future post.</p>
+<h4 id="Modern-Dynamic-Language-VM-Architecture">Modern Dynamic Language VM Architecture</h4>
+<p>Finally, we have gathered enough background to understand how the architecture of modern dynamic language VMs are reached.</p>
+<p>First of all, we need an interpreter – there is no reason to afford the startup delay and high memory overhead to compile everything to native code.</p>
+<p>Next, we need a baseline JIT tier. The baseline JIT tier is designed to compile fast, so we must not perform expensive optimizations such as type speculation. As a side result, the baseline JIT’ed code is <em>generic</em>: it will never need to OSR exit to the interpreter. This not only eliminates a major complexity, but also allows the optimizing JIT tier to OSR exit to the baseline JIT tier, instead of the interpreter.</p>
+<p>The baseline JIT <em>will</em> perform inline caching (IC) optimization, though. As a local optimization that only affects internally how a bytecode is implemented, IC does not slow down compilation speed, while bringing significant performance benefits on its own.</p>
+<p>Furthermore, IC collects accurate information about the prior executions, which can be used by the optimizing JIT to do further optimizations. For example, if the optimizing JIT noticed that a call IC only has one entry, which means the call site has only ever seen one target, the optimizing JIT can speculatively inline the call target, which would then expose lots of further optimization opportunities.</p>
+<p>Then comes the optimizing JIT tier. Type speculation and OSR-exit form the foundation of optimizing JIT. With type speculation, the compiler can safely assume that certain values have certain type. This allows the compiler to eliminate unnecessary type checks, and without the dynamism factor from dynamic typing, many traditional optimizations designed for static-typed languages can apply.</p>
+<p>Modern VMs also <a href="https://sillycross.github.io/2022/04/30/2022-04-30/">employ an optimization</a> called <em>watchpoints</em>, which are external speculative assumptions that the optimizing JIT may assume to be true. When a speculation failure or watchpoint invalidation happens, the JIT’ed code will OSR exit to the baseline JIT tier. This is a lot harder to do than said. However, to keep this post focused, we will leave the details to a future post.</p>
+<p>Most of the state-of-the-art VMs, such as <a href="https://github.com/WebKit/WebKit/tree/main/Source/JavaScriptCore" target="_blank" rel="noopener">JavaScriptCore</a>, <a href="https://v8.dev/" target="_blank" rel="noopener">V8</a>, <a href="https://firefox-source-docs.mozilla.org/js/index.html" target="_blank" rel="noopener">SpiderMonkey</a>, and <a href="https://github.com/microsoft/ChakraCore-wiki/blob/master/Architecture-Overview.md" target="_blank" rel="noopener">ChakraCore</a> (RIP), have converged to a high-level architecture similar to what is described above, as illustrated in the figure below.</p>
+<p><img src="/images/2023-05-12/vm-archs.png" alt="High level architecture of modern dynamic language VMs"></p>
+<p>Specifically, the input program starts executing at the <em>interpreter</em> tier, and hot code eventually gets tiered-up to the <em>baseline JIT</em> tier.</p>
+<p>The baseline JIT’ed code is generic, and will never OSR exit to the interpreter. Apart from the JIT’ed code (which gets rid of the overhead of decoding bytecode operands and the indirect dispatch), the baseline JIT tier employs inline caching as the only main optimization.</p>
+<p>For the code that gets even hotter, the <em>optimizing JIT</em> tier kicks in. The optimizing JIT does more aggressive optimizations, and generates speculatively optimized code that could OSR-exit into the baseline JIT tier.</p>
+<h4 id="Deegen-Motivation-Vision-and-Current-State">Deegen: Motivation, Vision and Current State</h4>
+<p>While the multi-tier architecture explained above is undeniably elegant and achieves high performance, it comes at a very high engineering cost.</p>
+<p>Under current implementation techniques, hand-coded assembly is ubiquitous in each VM tier. There is little code sharing across tiers or across target hardware platforms, but all of them must be kept in perfect sync and must honestly implement the semantics of the language in every edge case. As a result, for developer groups not backed by tech giants, the engineering cost from such a complex architecture is unaffordable.</p>
+<p><code>Deegen</code> is designed to reduce the high engineering cost via a more systematic approach. The ultimate goal of <code>Deegen</code> is to automatically generate all the VM tiers from a single source of truth – a semantical description of the VM bytecodes written in C++, as illustrated in the figure below.</p>
+<p><img src="/images/2023-05-12/deegen-arch.png" alt="The ultimate vision and current state of Deegen"></p>
+<p>By generating the VM automatically, <code>Deegen</code> allows any language developer to enjoy the benefits of the high-performance modern multi-tier VM architecture, at an engineering cost similar to writing a naive interpreter.</p>
+<p>To evaluate <code>Deegen</code>’s capability in practice, we implemented <code>LuaJIT Remake</code>, a standard-compliant experimental VM for Lua 5.1.</p>
+<p>In <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">a prior post</a>, we demonstrated how we used <code>Deegen</code> to automatically generate a highly-optimized interpreter for <code>LuaJIT Remake</code>, which significantly outperforms LuaJIT’s hand-coded-in-assembly interpreter across a variety of benchmarks.</p>
+<p>In this post, we will step further and demonstrate how <code>Deegen</code> could be used to automatically generate a highly-optimized baseline JIT tier for <code>LuaJIT Remake</code> from the same bytecode semantical description.</p>
+</div> <!-- background section -->
+<h3 id="How-to-Generate-Machine-Code-a-name-after-background-section-a">How to Generate Machine Code?<a name="after_background_section"></a></h3>
+<p>For every JIT, this is an unavoidable problem: how do you generate machine code?</p>
+<p>A typical solution used by many (<a href="https://github.com/WebKit/WebKit/tree/main/Source/JavaScriptCore" target="_blank" rel="noopener">JSC</a>, <a href="https://v8.dev/" target="_blank" rel="noopener">V8</a>, <a href="https://luajit.org/" target="_blank" rel="noopener">LuaJIT</a>, etc) is a <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/assembler/AbstractMacroAssembler.h.html">hand-coded assembler</a>. The assembler provides APIs (e.g., <code>EmitMovRegReg64</code>) to the JIT, which the JIT uses to emit assembly instructions as machine code one by one.</p>
+<p>However, such an approach is clearly infeasible for our use case, where our input is expressed as C++ bytecode semantics.</p>
+<p>So can we use LLVM directly at runtime to generate code? Unfortunately this is also impractical, as LLVM’s compilation speed is <a href="https://webkit.org/blog/5852/introducing-the-b3-jit-compiler/" target="_blank" rel="noopener">too slow even for a heavyweight optimizing JIT</a>, not to mention a baseline JIT where fast compilation is a top concern.</p>
+<h3 id="Copy-and-Patch-the-Art-of-Repurposing-Existing-Tools">Copy-and-Patch: the Art of Repurposing Existing Tools</h3>
+<p>The solution is a paper I wrote years ago: <a href="/assets/copy-and-patch.pdf">Copy-and-Patch Compilation</a>.</p>
+<p>In one sentence, Copy-and-Patch is a trick that allows one to generate code without knowing anything about how to generate code.</p>
+<p>How is that even possible? While the paper is long, the trick is actually extremely simple, which I will explain here.</p>
+<p>Consider the following C++ function:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_lhs</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_rhs</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_add</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> evaluate_lhs() + evaluate_rhs();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>When the C++ compiler compiles the above code, it knows nothing about the definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>. But it can somehow produce an object file, and the linker can link the object file to <em>any</em> definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>, and the final executable would just work.</p>
+<h4 id="Relocation-Code-Generation">Relocation = Code Generation</h4>
+<p>What does it mean? The object file must contains structured information on how to link <code>evaluate_add</code> against <em>any</em> definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>. So if we parse the object file to get that info, at runtime, we can act as the linker, and “link” <code>evaluate_add</code> against any runtime-known <code>evaluate_lhs</code> and <code>evaluate_rhs</code> of our choice to perform an <code>add</code>. This is effectively a JIT<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup>!</p>
+<p>Of course, the “structured information” has its formal name: <em>linker relocation records</em>. But the name is not important. The important thing is as long as we parsed out those information, we can use them at runtime to emit executable code. And this process is extremely cheap: all it takes is a <code>memcpy</code> followed by a few scalar additions, thus the name “Copy-and-Patch”.</p>
+<p>For example, the <code>evaluate_add</code> we just saw will produce an object file with the following contents:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">evaluate_add:</span><br><span class="line">  53 e8 00 00 00 00 89 c3 e8 00 00 00 00 01 d8 5b c3 </span><br></pre></td></tr></table></figure>
+<p>with the following linker relocation record:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">offset &#x3D; 2, type &#x3D; R_X86_64_PLT32, sym &#x3D; evaluate_lhs, addend &#x3D; -4</span><br><span class="line">offset &#x3D; 9, type &#x3D; R_X86_64_PLT32, sym &#x3D; evaluate_rhs, addend &#x3D; -4</span><br></pre></td></tr></table></figure>
+<p>Then, the following copy-and-patch logic would allow one to JIT this function at any address with any desired <code>evaluate_lhs</code> and <code>evaluate_rhs</code> targets:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">codegen</span><span class="params">(<span class="keyword">uint8_t</span>* dst, <span class="keyword">uint8_t</span>* lhsFn, <span class="keyword">uint8_t</span>* rhsFn)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// The contents in the object file</span></span><br><span class="line">  <span class="keyword">constexpr</span> <span class="keyword">uint8_t</span> code[] = &#123; </span><br><span class="line">    <span class="number">0x53</span>, <span class="number">0xe8</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x89</span>, <span class="number">0xc3</span>, </span><br><span class="line">    <span class="number">0xe8</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x01</span>, <span class="number">0xd8</span>, <span class="number">0x5b</span>, <span class="number">0xc3</span> &#125;;</span><br><span class="line">  <span class="comment">// The "copy" logic</span></span><br><span class="line">  <span class="built_in">memcpy</span>(dst, code, <span class="keyword">sizeof</span>(code));</span><br><span class="line">  <span class="comment">// The "patch" logic based on the relocation records</span></span><br><span class="line">  *(<span class="keyword">uint32_t</span>*)(dst + <span class="number">2</span>) = (<span class="keyword">uint32_t</span>)(lhsFn - (dst + <span class="number">2</span>) - <span class="number">4</span>);</span><br><span class="line">  *(<span class="keyword">uint32_t</span>*)(dst + <span class="number">9</span>) = (<span class="keyword">uint32_t</span>)(rhsFn - (dst + <span class="number">9</span>) - <span class="number">4</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Yes, that’s all of the core trick of Copy-and-Patch: at build time, compile the logic pieces we want to JIT into object file, and parse the object file to obtain the unrelocated code and relocation records (a <em>stencil</em> in the paper’s terminology). At runtime, code generation is simply wiring up the stencils and materializing them into executable code by a <em>copy</em> (<code>memcpy</code>) and a few <em>patches</em> (scalar additions).</p>
+<h4 id="Continuation-Passing-Style-Branch">Continuation-Passing Style = Branch</h4>
+<p>The generated code right now works, but the code quality is miserable. Everything is executed by a <code>call</code> to another function, which is a lot of overhead.</p>
+<p>However, what if one rewrites the code to <a href="https://dl.acm.org/doi/10.1145/800179.810196" target="_blank" rel="noopener">continuation-passing style</a>?</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">continuation</span><span class="params">(<span class="keyword">int</span> result)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">evaluate_add</span><span class="params">(<span class="keyword">int</span> lhs, <span class="keyword">int</span> rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">int</span> result = lhs + rhs;</span><br><span class="line">  [[clang::musttail]] <span class="keyword">return</span> continuation(result);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Now, the calls are gone. Furthermore, the function will end with a <code>jmp</code> instruction to function <code>continuation</code> (since the call is a <a href="https://en.wikipedia.org/wiki/Tail_call" target="_blank" rel="noopener">tail call</a>). Since we have control over where to put each function at, if we put <code>continuation</code> right after <code>evaluate_add</code>, then we can even eliminate the <code>jmp</code> to a fallthrough altogether<sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>.</p>
+<p>After employing this trick, it’s fairly easy to prove that the generated code will not contain unnecessary <code>jmp</code> instructions: all the branches must correspond to actual control flow edges in the generated logic.</p>
+<p>One of the main reasons that interpreters are slow is the unpredictable indirect dispatch. At this stage, our generated code has no indirect dispatch, in fact, no unnecessary branches at all. This is already a big speedup over an interpreter.</p>
+<h4 id="Address-of-External-Symbol-Runtime-Constant">Address of External Symbol = Runtime Constant</h4>
+<p>Another important reason that JITs are faster than interpreters is the ability of JIT to burn runtime constants (bytecode operands, etc) into the instruction stream. Can we support it as well?</p>
+<p>Of course! The trick is simple:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">extern</span> <span class="keyword">char</span> x;  <span class="comment">// define an external variable</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">continuation</span><span class="params">(<span class="keyword">uint64_t</span> value)</span></span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">pointer_dereference_at_fixed_offset</span><span class="params">(<span class="keyword">void</span>* ptr)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// "(uint64_t)&amp;x" is the important part</span></span><br><span class="line">  <span class="keyword">uint64_t</span> result = *(<span class="keyword">uint64_t</span>*)((<span class="keyword">uint64_t</span>)ptr + (<span class="keyword">uint64_t</span>)&amp;x);</span><br><span class="line">  [[clang::musttail]] <span class="keyword">return</span> continuation(result);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>All it takes is to define an external symbol, and use its <em>address</em> as the runtime constant we want to use. Since by definition an external symbol is external, the compiler cannot assume anything about where it resides at<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup>. This gives us a way to represent an opaque constant value.</p>
+<p>Of course, the linker knows how to patch the code to make the external symbol point to the right location. Thus, we can patch it at runtime to make it represent any runtime constant as well :)</p>
+<h4 id="Function-Prototype-Register-Allocation-Combinatorial-Explosion-Instruction-Selection">Function Prototype = Register Allocation / Combinatorial Explosion = Instruction Selection</h4>
+<p>Finally, there are <a href="https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project#lightweight_jit_compiler_project_goals" target="_blank" rel="noopener">two most important codegen-level optimizations</a>: register allocation and instruction selection<sup class="footnote-ref"><a href="#fn11" id="fnref11">[11]</a></sup>. Can we support them as well? The answer is yes. However, these optimizations are primarily only useful for the static language use cases where each bytecode only implements very simple logic<sup class="footnote-ref"><a href="#fn12" id="fnref12">[12]</a></sup>. So to keep this post focused, I will not go into details.</p>
+<h4 id="Copy-and-Patch-Wrapping-up">Copy-and-Patch: Wrapping up</h4>
+<p>I wouldn’t mind at all if you view Copy-and-Patch as a big hack: because it is! But it works! And it works nicely!</p>
+<p>As shown <a href="/assets/copy-and-patch.pdf">in the paper</a>, one can use Copy-and-Patch to construct extremely fast baseline JIT that <em>significantly</em> outperforms the existing state-of-the-arts:</p>
+<ul>
+<li>For WebAssembly, we <a href="https://github.com/sillycross/WasmNow" target="_blank" rel="noopener">implemented a baseline JIT</a> that compiles 4.9x-6.5x faster than Google Chrome’s <a href="https://v8.dev/blog/liftoff" target="_blank" rel="noopener">Liftoff baseline compiler</a>, while also generating 39%-63% faster code.</li>
+<li>For SQL database, we implemented a prototype <a href="https://github.com/sillycross/PochiVM" target="_blank" rel="noopener">SQL query baseline JIT</a> that on TPC-H queries, compiles &gt;1000x faster than LLVM -O3, while only generating 24% slower code.</li>
+</ul>
+<p>Furthermore, Copy-and-Patch perfectly suits Deegen’s needs for a JIT:</p>
+<ol>
+<li>It does not know or care about what is being JIT’ed. The logic we want to JIT is directly compiled by a C++ compiler into an object file at build time. C&amp;P merely parses the object file to produce the <em>stencils</em>, which can then be used to JIT code at runtime.</li>
+<li>The code generation at runtime is extremely fast, which perfectly matches the requirement of a baseline JIT. Note that we are doing a lot of expensive preprocessing work, but all of them happen at build time.</li>
+</ol>
+<h3 id="Deegen-the-Art-of-Repurposing-Existing-Tools-Continued">Deegen: the Art of Repurposing Existing Tools, Continued</h3>
+<p>While Copy-and-Patch is a nice technique, its vanilla form as described above is still not enough to fulfill Deegen’s use case. Specifically, the vanilla Copy-and-Patch still requires quite a bit of manual work to implement the stencils and the runtime logic, whereas in Deegen, all must be fully automatic.</p>
+<p>As it turns out, fully automating Copy-and-Patch requires significant design-level improvements to the original technique, which we will cover in this section.</p>
+<!-- The vanilla Copy-and-Patch does not support the important domain-specific optimizations required to make dynamic languages fast, e.g., inline caching and hot-cold code splitting. -->
+<p>To make things easier to understand, we will use the following hypothetical <code>Add</code> bytecode as example (see <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">prior post</a> for a detailed explanation of the code):</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="Identifying-the-Runtime-Constants">Identifying the Runtime Constants</h4>
+<p>In vanilla Copy-and-Patch, the programmer is required to declare the runtime constants by special macros. So the first improvement we need to make is to make this step automatic.</p>
+<p>Fortunately this is fairly easy. The runtime constants in our case are simply the bytecode operands (and for the IC, everything in the IC state). Since Deegen is already responsible for generating the bytecode decoding logic (and encoding / decoding of the IC state), all we need to do is to not emit the decoding logic, but a magic function call, so that the later processing stages knows that the value is a runtime constant.</p>
+<p>For example, for <code>Add</code>, we know that the bytecode slot ordinal of <code>lhs</code>, <code>rhs</code> and the output slot are runtime constants. So the bytecode semantic function will be lowered to LLVM IR that conceptually resembles the following C logic:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">size_t</span> lhs_slot = __runtime_constant_lhs_slot();</span><br><span class="line"><span class="keyword">size_t</span> rhs_slot = __runtime_constant_rhs_slot();</span><br><span class="line">TValue lhs = <span class="built_in">stack</span>[lhs_slot];</span><br><span class="line">TValue rhs = <span class="built_in">stack</span>[rhs_slot];</span><br><span class="line"><span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">  ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">  <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">  <span class="comment">// Lowered from the Return() API</span></span><br><span class="line">  <span class="keyword">size_t</span> output_slot = __runtime_constant_output_slot();</span><br><span class="line">  <span class="built_in">stack</span>[output_slot] = TValue::Create&lt;tDouble&gt;(res);</span><br><span class="line">  __dispatch_to_next_bytecode();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>It’s also fairly easy to generate the implementation of the JIT, which needs to decode the bytecode struct to retrieve all the operand values, and use these values to materialize the copy-and-patch stencils: we will show the concrete generated implementation of the <code>__codegen_Add</code> function (which emits machine code for <code>Add</code> at runtime) at the end of this section.</p>
+<h4 id="Propagating-the-Runtime-Constants">Propagating the Runtime Constants</h4>
+<p>Acute readers may have noticed that the C logic above cannot result in optimal code. Consider line 3: <code>TValue lhs = stack[lhs_slot]</code>. What actually happens in this line is that we are decoding address <code>(uint64_t)stack + lhs_slot * 8</code> (since each <code>TValue</code> is 8 bytes). If we only make <code>lhs_slot</code> a runtime constant (as we are doing right now), there is no way for LLVM to fold <code>lhs_slot * 8</code> into a constant (recall that at LLVM level, a runtime constant is really the address of an external symbol). As a result, it will generate less-optimal code like <code>mov $XXXX, %rax; shl 3, %rax</code>.</p>
+<p>Therefore, we need a customized LLVM constant propagation pass to identify all the constant expressions derived from the “root” runtime constants. Then, we should make each constant expression a runtime constant. Of course, this also means that at runtime, in order to populate these derived runtime constants with concrete values, the codegen function needs to replay the computation of the expression using the concrete values of the root runtime constants.</p>
+<p>After this transform, the LLVM IR of our <code>Add</code> example would resemble the following C logic:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">size_t</span> tmp1 = __derived_runtime_constant_1();</span><br><span class="line"><span class="keyword">size_t</span> tmp2 = __derived_runtime_constant_2();</span><br><span class="line">TValue lhs = *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span> + tmp1);</span><br><span class="line">TValue rhs = *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span> + tmp2);</span><br><span class="line"><span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">  ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">  <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">  <span class="comment">// Lowered from the Return() API</span></span><br><span class="line">  <span class="keyword">size_t</span> tmp3 = __derived_runtime_constant_3();</span><br><span class="line">  *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span>+tmp3) = TValue::Create&lt;tDouble&gt;(res);</span><br><span class="line">  __dispatch_to_next_bytecode();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>where the derived runtime constants <code>__derived_runtime_constant_1/2/3</code> are defined as follow:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">__derived_runtime_constant_1 :&#x3D; lhs_slot * 8</span><br><span class="line">__derived_runtime_constant_2 :&#x3D; rhs_slot * 8</span><br><span class="line">__derived_runtime_constant_3 :&#x3D; output_slot * 8</span><br></pre></td></tr></table></figure>
+<h4 id="Fixing-the-Symbol-Range-Assumption">Fixing the Symbol Range Assumption</h4>
+<p>As we already explained, in Copy-and-Patch, a runtime constant is expressed by the address of an external symbol.</p>
+<p>While it is a neat trick that is crucial for high-quality code, it could break down and cause miscompilation in edge cases. For example, consider the code below:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">extern</span> <span class="keyword">char</span> x;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">f</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">uint64_t</span> val = (<span class="keyword">uint64_t</span>)&amp;x;</span><br><span class="line">  <span class="keyword">if</span> (val == <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="comment">/* do something */</span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>LLVM would deduce that the <code>val == 0</code> check is trivially false, and “optimize away” the whole if-clause. Why? Because <code>val</code> is the address of variable <code>x</code>, and of course the address of an variable is never <code>0</code>, good game.</p>
+<p>In vanilla Copy-and-Patch, the programmer is responsible for avoiding such corner cases. But in Deegen, where stencils are automatically generated, we must find a systematic and provably-correct solution.</p>
+<p>So what’s the issue? You might think the issue is “symbol must not be null”. That’s what I initially believed as well<sup class="footnote-ref"><a href="#fn13" id="fnref13">[13]</a></sup>, but I later realized it is only the symptom of a much larger issue.</p>
+<p>As it turns out, according to <a href="https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf" target="_blank" rel="noopener">x86-64 ABI</a>, every symbol will reside in address range <code>[1, 2^31 - 2^24)</code><sup class="footnote-ref"><a href="#fn14" id="fnref14">[14]</a></sup>. This is also exactly the assumption held by LLVM, and used by LLVM to do optimizations (e.g., in the example above, it deduces that the address of a symbol must not equal <code>0</code>). So the “<code>val == 0</code> check” example is not the only buggy case. LLVM can, for example, do a zero extension instead of a sign extension, as it believes that the address of the symbol must have bit <code>31</code> being <code>0</code> thus a <code>ZExt</code> is equivalent to a <code>SExt</code>, causing buggy code if the runtime constant were to represent a negative value.</p>
+<p>One might think the <code>[1, 2^31 - 2^24)</code> range assumption is artificial, but it isn’t. This range assumption is actually important to generate correct code. For a simple example, the code <code>movq sym+100(%rax), %rax</code> would not work correctly due to an <code>int32_t</code> overflow in the imm32 addressing mode field of the instruction, if <code>sym</code> were to have value <code>2^31 - 50</code>.</p>
+<p>Therefore, for a provably correct solution, we must make sure that whenever we use an external symbol to represent a runtime constant, the runtime constant we want to express must fit in <code>[1, 2^31 - 2^24)</code>.</p>
+<p>In Deegen, this is accomplished by a customized Constant Range Analysis pass to track the range of every constant expression based on the runtime constants. Of course, we also need to know the possible range for the “root” runtime constants – the bytecode operands, and the values captured by the IC state. Fortunately, for most of them, the range is implicit (for example, a bytecode slot is known to be a small non-negative integer, and an operand with type <code>uint16_t</code> obviously fits in <code>[0, 65535]</code>) and requires no user intervention. For the rest, a new Deegen API is added so the user can tell us the range assumption of the value.</p>
+<p>Once we figured out the proven range of each runtime constant expression, we can retrofit it into our target range <code>[1, 2^31 - 2^24)</code> by simple transformation. To explain how it works, let’s revisit our <code>Add</code> example:</p>
+<ul>
+<li><code>lhs_slot</code> is a root runtime constant. Since it represents a bytecode slot ordinal, it is known to be a small non-negative integer, say <code>[0, 10000]</code>.</li>
+<li>And we have a derived runtime constant <code>lhs_slot * 8</code>, which is known to fit in <code>[0, 80000]</code> by range analysis.</li>
+<li>The range <code>[0, 80000]</code> does not fit in <code>[1, 2^31 - 2^24)</code>.</li>
+<li>However, if we define a new expression <code>new_expr := lhs_slot * 8 + 1</code>, the new expression would have range <code>[1, 80001]</code> and fit the assumption.</li>
+<li>Therefore, we use an external symbol <code>sym</code> to represent <code>lhs_slot * 8 + 1</code>, and rewrite the LLVM IR to substitute <code>lhs * 8</code> with <code>sym - 1</code>.</li>
+</ul>
+<p>Now, we are guaranteed correct code as the symbol range assumption is met.</p>
+<p>Lastly, if the range of an expression is too large to fit in <code>[1, 2^31 - 2^24)</code>, we simply give up. This means the expression will be evaluated at runtime, but this is rare, and is only a minor performance issue, not a correctness issue.</p>
+<p>After this transformation, the conceptual logic of the <code>Add</code> example would look like something below:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">size_t</span> tmp1 = __derived_runtime_constant_1() - <span class="number">1</span>;</span><br><span class="line"><span class="keyword">size_t</span> tmp2 = __derived_runtime_constant_2() - <span class="number">1</span>;</span><br><span class="line">TValue lhs = *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span> + tmp1);</span><br><span class="line">TValue rhs = *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span> + tmp2);</span><br><span class="line"><span class="keyword">if</span> (!lhs.Is&lt;tDouble&gt;() || !rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">  ThrowError(<span class="string">"Can't add!"</span>);</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">  <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">  <span class="comment">// Lowered from the Return() API</span></span><br><span class="line">  <span class="keyword">size_t</span> tmp3 = __derived_runtime_constant_3() - <span class="number">1</span>;</span><br><span class="line">  *(TValue*)((<span class="keyword">uint64_t</span>)<span class="built_in">stack</span>+tmp3) = TValue::Create&lt;tDouble&gt;(res);</span><br><span class="line">  __dispatch_to_next_bytecode();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>where the derived runtime constants <code>__derived_runtime_constant_1/2/3</code> are defined as follow:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">__derived_runtime_constant_1 :&#x3D; lhs_slot * 8 + 1</span><br><span class="line">__derived_runtime_constant_2 :&#x3D; rhs_slot * 8 + 1</span><br><span class="line">__derived_runtime_constant_3 :&#x3D; output_slot * 8 + 1</span><br></pre></td></tr></table></figure>
+<p>Note that in normal cases, those <code>+1 / -1</code> adjustments will not end up as machine instructions in the resulting JIT code, as normally all of those computation ends up being an imm32 field of an instruction, as we shall see in the JIT code example soon.</p>
+<p>Having covered the core of the JIT code generation system, we are finally ready to explore the design of the JIT itself and the supporting components.</p>
+<h4 id="AOT-Slow-Path-Design">AOT Slow Path Design</h4>
+<p>A distinctive “feature” of dynamic languages is the pervasive existence of slow paths. For example, if you call a boolean value like <code>true</code> (why would anyone do that?), it could trigger some complicated metamethod lookup in Lua, ending up with a function to call or an error. In Deegen, a slow path can be created by both automatic type-based quickening and explicit user annotation (the <code>EnterSlowPath</code> API). But for the JIT, there are some extra complexity in implementing them.</p>
+<p>Obviously, the slow path logic should be AOT-compiled, not JIT’ed. However, this introduces two problems:</p>
+<ol>
+<li>How the JIT’ed code could transfer control to the AOT slow path.</li>
+<li>How the AOT slow path could transfer control back to the JIT’ed code.</li>
+</ol>
+<p>Let’s look at the second problem first. The bytecode stream does not contain any information about the JIT’ed code. Also, the slow path could make branches to other bytecodes and calls to other functions, so it’s not as easy as letting the JIT’ed code pass the JIT address of the next bytecode to the slow path.</p>
+<p>Deegen’s solution is a dedicated <code>SlowPathData</code> stream. The <code>SlowPathData</code> stream is similar to the bytecode stream, except that it is intended to be used by the AOT slow path of the JIT tier, instead of the interpreter. A <code>SlowPathData</code> contains all the information needed by the slow path, such as bytecode operands, JIT address for this bytecode, JIT address of the conditional branch target of this bytecode, etc. When the JIT’ed code wants to transfer control to the slow path, it would pass the <code>SlowPathData</code> pointer corresponding to the current bytecode to the AOT slow path. The AOT slow path can then have access to all the data it needs to complete the execution and transfer control back to JIT’ed code.</p>
+<p>Of course, the <code>SlowPathData</code> stream has to be generated. Fortunately, since Deegen understands the bytecode stream, it is not hard to generate logic that transcribes the bytecode stream to the <code>SlowPathData</code> stream. Specifically, the generated JIT compiler will generate the <code>SlowPathData</code> stream alongside the executable code.</p>
+<p>Now let’s look at the first problem. Transferring control from JIT’ed code to the AOT slow path requires some set up logic, for example, to correctly set up the <code>SlowPathData</code> pointer. However, these logic are rarely executed, as slow paths are, of course, rarely used. If no special handling is taken, the resulted code would have cold logic and hot logic mixed together, resulting in unnecessary additional branches and worse code locality. Of course, this is not a correctness problem, but ideally we want to handle it without sacrificing compilation time.</p>
+<p>Deegen employs the solution used in JavaScriptCore: <em>hot-cold code splitting</em>, except that Deegen must accomplish it automatically. Specifically, every stencil will be splitted into a hot part and a cold part. The JIT will generate two streams of executable code, one holding all the hot path logic, and one holding all the slow path logic. The hot-cold splitting is accomplished by an ASM transformation pass, which we will elaborate in the next section.</p>
+<h4 id="Baseline-JIT-Architecture-Summary-except-Inline-Caching">Baseline JIT Architecture Summary (except Inline Caching)</h4>
+<p>As of now, we have covered almost every major component in the design (except inline caching, which is complex enough that deserves its own section).</p>
+<p>For a quick summary, the high-level architecture we have explained is illustrated in the following figure:</p>
+<p><img src="/images/2023-05-12/baseline-jit-arch.png" alt="A summary of the high-level architecture of Deegen's baseline JIT (except IC)"></p>
+<h4 id="Baseline-JIT-Algorithm-in-More-Details">Baseline JIT Algorithm in More Details</h4>
+<p>In this subsection, we will add a few more details to how the baseline JIT works.</p>
+<p>In addition to the logic that actually generates machine code, Deegen also generates a <em>bytecode trait table</em> that contains various info about the generated code for each bytecode, e.g., the length of the JIT’ed code’s hot part and cold part, the length and alignment of the data section accompanying the JIT’ed code, the length of the <code>SlowPathData</code> for this bytecode, etc. This allows one to precompute all the buffer sizes in advance.</p>
+<p>The baseline JIT compiler works in two passes.</p>
+<p>In the first pass, we iterates through the bytecode stream, and use the bytecode trait table to compute various buffer sizes of the generated code and data. All the buffers are then allocated in advance, knowing that a buffer overrun will never happen when we actually fill contents (code, data, etc.) into the buffers. This pass is very cheap because no indirect dispatch is needed.</p>
+<p>In the second pass, we iterates through the bytecode stream again, and generate everything (executable code, the accompanying data, the <code>SlowPathData</code>, etc.) for each bytecode by populating the pre-allocated buffers. This step conceptually works similar to an interpreter. We have a pre-built dispatch table storing the codegen functions for each bytecode kind. Control is first transferred to the codegen function for the first bytecode. The function would generate everything needed for the first bytecode, advance buffer pointers accordingly, and then transfer control to the codegen function for the next bytecode. This process repeats until the end of the bytecode stream is reached.</p>
+<p>Thanks to Copy-and-Patch, each codegen function is completely branchless, except the tail dispatch that transfers control to the next codegen function, as we shall see in the <code>Add</code> example below. This allows a modern CPU to utilize its Instruction-Level Paralleism (ILP) capabilities to the utmost, yielding an extremely fast compilation process.</p>
+<p>Finally, due to the nature of one-pass code generation, bytecodes that can branch to other bytecodes would not know their branch destination address at the time their own code is being generated. To solve this issue, those bytecodes would push information about how the branch destination address shall be fixed up into a late-patch buffer. After all code generation is done, we need to iterate through the late-patch buffer and fix up all the branch targets.</p>
+<h4 id="Putting-Everything-Together-Example-for-Add-Bytecode">Putting Everything Together: Example for <code>Add</code> Bytecode</h4>
+<p>TODO: add figure</p>
+<h3 id="Supporting-Inline-Caching-the-Art-of-Repurposing-Existing-Tools-Evermore">Supporting Inline Caching: the Art of Repurposing Existing Tools, Evermore</h3>
+<p>Due to inherent design constraints of a baseline JIT (e.g., compilation must be fast, no OSR-exit is allowed), inline caching (IC) is the only high-level optimization tool available to the baseline JIT.</p>
+<p>And inline caching is powerful: if LJR’s baseline JIT didn’t have inline caching, it would only be 20% faster than LJR’s interpreter (which employed IC)<sup class="footnote-ref"><a href="#fn15" id="fnref15">[15]</a></sup>.</p>
+<p>In this section, we will elaborate how Deegen supports inline caching.</p>
+<h4 id="How-IC-works-in-Deegen-a-Step-by-Step-Example-of-Call-IC">How IC works in Deegen: a Step-by-Step Example of Call IC</h4>
+<p>For a beginner’s introduction to what IC is, please read the <a href="#deegen_baseline_jit_background_section">background section</a>. However, to understand how IC actually works in Deegen’s baseline JIT, the easiest way is to walk through an assembly example. Here, we will use a simplified <code>Call</code> bytecode, which performs a call with no arguments and discards all return values, to demonstrate how <em>call IC</em> works.</p>
+<p>The C++ bytecode semantic description is very simple:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">ReturnContinuation</span><span class="params">(TValue* <span class="comment">/*base*/</span>)</span> </span>&#123; Return(); &#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Call</span><span class="params">(TValue* base)</span> </span>&#123;</span><br><span class="line">  TValue func = *base;</span><br><span class="line">  <span class="keyword">if</span> (likely(func.Is&lt;tFunction&gt;())) &#123;</span><br><span class="line">    TValue* newStackFrame = base + x_numSlotsForStackFrameHeader;</span><br><span class="line">    MakeInPlaceCall(func.As&lt;tFunction&gt;(), </span><br><span class="line">                    newStackFrame, </span><br><span class="line">                    <span class="number">0</span> <span class="comment">/*numArgs*/</span>, </span><br><span class="line">                    ReturnContinuation);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    EnterSlowPath&lt;CheckMetatableSlowPath&gt;();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>It checks if the callee is a function object. If so, it uses Deegen’s <code>MakeInPlaceCall</code> API to make a call, and the return continuation simply discards all return values and transfer control to the next bytecode. Otherwise, it enters the outlined slow path function (omitted) that checks for a metatable call.</p>
+<p>Deegen would generate the following JIT code for this bytecode:</p>
+<p><img src="/images/2023-05-12/call-bytecode-main-logic.png" alt="JIT code generated for the example Call bytecode"></p>
+<p>Note that runtime constants are marked in purple in the form of <code>${X}</code>.</p>
+<p>Let’s pretend for now that the <code>codegen_call_ic</code> thing doesn’t exist, and look at the naive implementation. If you stare at the assembly code a little bit, you will notice that the logic involves:</p>
+<ol>
+<li>Two branches to check that <code>func</code> is a function object.</li>
+<li>Two dependent memory loads: one loads the function prototype <code>proto</code> from <code>func</code>, and one loads the actual entry point address from <code>proto</code>.</li>
+<li>One indirect branch to branch to the entry point.</li>
+</ol>
+<p>Unfortunately, dependent memory load and indirect branch are <em>exactly</em> the two things modern CPUs hate the most. And even predictable direct branches can be slow if there are too many of them so that the BTB is overwhelmed.</p>
+<p>So how does IC speeds up this code?</p>
+<p>As one might have expected, <code>codegen_call_ic</code> will be called on the first time this code is executed. What <code>codegen_call_ic</code> does is that it will emit a piece of IC code snippet, and chain it to the main logic by repatching the self-modifying-code (SMC) region, as shown below:</p>
+<p><img src="/images/2023-05-12/call-bytecode-direct-call-ic-1.png" alt="The JIT code after one IC entry is created"></p>
+<p>As one can see, the next time the same function is called, thanks to the SMC region, the IC will hit, and the optimized logic will be executed. The optimized logic does not check that <code>func</code> is a function object (because we already checked it last time), has no memory loads, and the branch is direct.</p>
+<p>This process can be repeated to chain any number of IC entries into a chain:</p>
+<ul>
+<li>SMC region branches to IC <code>#N</code></li>
+<li>IC <code>#N</code> branches to IC <code>#(N-1)</code> if the cached value does not hit</li>
+<li>… etc …</li>
+<li>IC <code>#1</code> branches to the IC miss slow path, which will create a new IC snippet <code>#(N+1)</code> and chain it at the head of the chain.</li>
+</ul>
+<p>Of course, at a certain point the overhead from the check chain would cancel out the benefit of the optimized code, and we will stop chaining more cases.</p>
+<h4 id="Call-IC’s-Direct-Call-Mode-vs-Closure-Call-Mode">Call IC’s Direct Call Mode vs Closure Call Mode</h4>
+<p>While the above approach works well if a Lua function is used like a C function (monomorphism) or a C++ virtual method (class-like polymorphism), it would work very poorly for the <em>function factory</em> desgin pattern. For example, consider the following Lua snippet:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">createCounter = <span class="function"><span class="keyword">function</span><span class="params">()</span></span> </span><br><span class="line">  <span class="keyword">local</span> value = <span class="number">0</span></span><br><span class="line">  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span><span class="params">()</span></span> </span><br><span class="line">    value = value + <span class="number">1</span></span><br><span class="line">    <span class="keyword">return</span> value</span><br><span class="line">  <span class="keyword">end</span></span><br><span class="line"><span class="keyword">end</span></span><br><span class="line">incrementCounter = <span class="function"><span class="keyword">function</span><span class="params">(counter)</span></span></span><br><span class="line">  <span class="keyword">return</span> counter()</span><br><span class="line"><span class="keyword">end</span></span><br></pre></td></tr></table></figure>
+<p>In this example, the call in line <code>9</code> is likely to see a lot of different function objects, even though all of them share the same prototype (the counter lambda in line <code>3</code>). Since our current call IC strategy caches on the function object, not the function prototype, it is completely ineffective for this use pattern.</p>
+<p>Again, we employ the solution used in JavaScriptCore. Our call IC supports two modes: <em>direct call</em> mode and <em>closure call</em> mode. A call IC site always starts in direct call mode, in which it caches on function objects, as we have shown above.</p>
+<p>But when a call IC site first sees a IC miss that has the same function prototype as one of the already-cached function objects, it will transition the IC to closure-call mode. To do this, it rewrites the self-modifying code region and invalidates all existing ICs at this site, and from now on, this IC site will instead cache on the function prototypes. This is demonstrated by the figure below:</p>
+<p><img src="/images/2023-05-12/call-bytecode-closure-call-ic-1.png" alt="The JIT code after the Call IC transitions to Closure Call Mode"></p>
+<p>As one can see, the SMC region is repatched to completely different logic: it checks if <code>func</code> is a heap object (which is required for us to load its hidden class), then load the hidden class of the heap object and branch to the first IC case.</p>
+<p>Each closure call IC case caches on a function prototype. So it compares if the hidden class matches the cached prototype. If yes, it knows that <code>func</code> must be a function object with the cached prototype, so it can perform an optimized call similar to before.</p>
+<p>Of course, one can also chain up as many IC cases in closure call as desired, until the chained check overhead overwhelms the perf gain from the optimized code.</p>
+<p>As one can see, closure call mode is less efficient than direct call mode as it performs one extra check and one extra memory load, but it works effectively for the function factory design pattern. This is why the call IC site always starts in direct call mode, and only transits to closure call mode when it actually observes a closure call pattern.</p>
+<h4 id="So-How-to-Automatically-Generate-All-of-These">So, How to Automatically Generate All of These?</h4>
+<p>Having understood how IC works in Deegen (we only demonstrated Call IC, but the case for Deegen’s Generic IC API is similar), the next question is: how could Deegen generate all of these automatically?</p>
+<p>However, as you can already see, what we want to do is something totally outside the operating envelope of LLVM. LLVM is simply not designed to generate a function that can dynamically patch itself at runtime to append a dynamic chain of parametrizable code snippets.</p>
+<p>As before, our solution is to repurpose existing tools to trick LLVM into helping us without its knowledge. And as it turns out, the core of the trick is to repurpose a completely-irrelavent little-known GCC feature in the dark corner.</p>
+<h4 id="Thank-you-GCC-ASM-goto">Thank you, GCC ASM-goto!</h4>
+<p>GCC supports a little-known extension feature called <a href="https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html#:~:text=6.47.2.7%20Goto%20Labels" target="_blank" rel="noopener">ASM-goto</a>, which basically allows one to write inline assembly that branches from assembler code to C labels. And LLVM, aiming for compatibility with GCC, <a href="https://lists.llvm.org/pipermail/llvm-dev/2018-October/127239.html" target="_blank" rel="noopener">has also supported this feature a few years ago</a> by a special <code>CallBr</code> IR instruction.</p>
+<p>I just want to say a big thank you to the GCC developers who designed this feature and the LLVM developers who added support for it! Without this feature, it’s very likely Deegen couldn’t support inline caching at all.</p>
+<p>So how does ASM-goto have anything to do with inline caching?</p>
+<p>As you might have seen from the assembly example above, the hard part of IC is that each IC case is a piece of machine code that directly “clings” to the main logic. It cannot be implemented by a separate function due to the call overhead and the requirements of Lua’s stackful coroutine. It must work directly using the context (e.g., which register holds which value) of the main logic, and could transfer control back to the main logic.</p>
+<p>ASM-goto (and its underlying <code>CallBr</code> LLVM IR) provided <em>exactly</em> the semantics we want. Since it is an <code>InlineAsm</code>, LLVM is <em>required</em> to treat its contents as opaque. All LLVM knows is that after executing the <code>InlineAsm</code>, control will be transferred to one of the destinations specified in the <code>CallBr</code>.</p>
+<p>In other words, we repurpose <code>CallBr</code> as a way to model “a control flow transfer in an unspecified manner”. At runtime, we are building up a dynamic chain of IC cases; but if one views the chain-check logic as a black box, then it can be characterized as: after the black box is executed, control is transferred to either an IC hit case specialized to the cached values, or the IC miss slowpath. This is exactly the semantics <code>CallBr</code> provided, so we can safely model it using <code>CallBr</code>.</p>
+<p>But this is still far from enough. Now we have a way to model the control flow of the dynamic IC chain in LLVM IR, but it’s still unclear how we can extract the IC logic from the main function, implement the IC check chain, and do all the self-modifying code stuff.</p>
+<p>This is where the last piece of the puzzle comes in: ASM transformation.</p>
+<h4 id="ASM-Transformation-the-Last-Piece-of-the-Puzzle">ASM Transformation: the Last Piece of the Puzzle</h4>
+<p>I know this might scare off people, as directly messing up with assembly sounds like an extremely fragile approach.</p>
+<p>But it really isn’t. Deegen treats most of the assembly instructions as opaque and will not modify any of them. The ASM transformation is limited to reordering and extracting ASM blocks.</p>
+<p>As a result, Deegen’s assembly knowledge is extremely limited. All it knows is that:</p>
+<ul>
+<li>A <code>jmp</code> does a direct jump.</li>
+<li>A <code>jmpq</code> does an indirect jump.</li>
+<li>Any other instruction starting with <code>j</code> does a conditional jump.</li>
+</ul>
+<p>However, as it turns out, with some clever tricks and cooperation from LLVM IR, doing only ASM block rearrangements is already sufficient to achieve a lot.</p>
+<p>Among other things, this allows us to support all the inline caching stuffs.</p>
+<p>The full trick is the following. Recall that we are only using <code>CallBr</code> as a device to express an opaque control flow, and the <code>InlineAsm</code> inside <code>CallBr</code> does not matter. Now, we will use this <code>InlineAsm</code> to carry down information to the textual assembly level, as shown below.</p>
+<p><img src="/images/2023-05-12/callbr-example.png" alt="The CallBr trick at LLVM IR level and the resulting assembly"></p>
+<p>As one can see, the previledged instruction <code>hlt</code> is used as a magic to allows us to identify the <code>CallBr</code> in the textual assembly. Then, the fake branches following the <code>hlt</code> allows us to know the assembly labels that implements each logic case.</p>
+<p>Having known these information, the payload is no longer useful, so we remove the <code>CallBr</code> payload from assembly, and make it branch to the slow path directly.</p>
+<p>Next, we perform a CFG analysis of the assembly. The only hard part about the CFG analysis is to know the possible destinations of the indirect branches. This ideally should be implemented as a LLVM backend pass, but I haven’t figured out how to do it due to limited documentation about LLVM backend. So currently, the indirect branch target analysis is done via some hacks that map the indirect branch back to LLVM IR by debug info.</p>
+<p>Now we have the CFG of the assembly, we can then figure out the ASM blocks only reachable from the function entry, and only reachable from each IC logic kind, as shown below.</p>
+<p><img src="/images/2023-05-12/ic-extraction.png" alt="ASM CFG Analysis and IC Extraction"></p>
+<p>Note that the logic entry of each IC kind must not be reachable from the function entry, because they are only reachable by the <code>CallBr</code>, but we have removed those control flow edges as the <code>CallBr</code> has been removed by us.</p>
+<p>Finally, we can separate out the IC logic from the main function logic. For the main function, we only retain ASM blocks reachable from the function entry. And for each IC kind, we only retain ASM blocks reachable from its logic entry but not the main function entry. The extracted assembly are then compiled to object file and extracted to a Copy-and-Patch stencil, so we can JIT them at runtime.</p>
+<p>There are still some minor issues that we haven’t covered, such as how we build up the dynamic IC check chain, and how exactly the self-modifying code region is constructed. But the idea is similar to how we supported inline caching: most of the heavy-lifting of actually building up the logic is done at LLVM, and <code>InlineAsm</code> is repurposed as a tool to pass down information to assembly level. Then at assembly level, we can piece everything together by very simple transformations that requires little to no assembly knowledge.</p>
+<h4 id="The-Hot-Cold-Splitting-Pass-and-Jump-to-Fallthrough-Pass">The Hot-Cold Splitting Pass and Jump-to-Fallthrough Pass</h4>
+<p>Finally, since we already have an ASM transformation infrastructure, why not use it for more good?</p>
+<p>The Hot-Cold Splitting Pass works by reordering ASM blocks and move cold blocks to a separated text section. Of course, the stencil extraction logic that generates the copy-and-patch stencil from the object file needs to be made aware of this and extract both sections, but this is not hard to do. To figure out which blocks are cold, ideally, one should write a LLVM backend pass. However, as explained before, I still haven’t figured out how to write a LLVM backend pass, so currently this is accomplished by injecting debug info to map assembly blocks back to LLVM IR blocks, and them use LLVM IR’s block frequency infrastructure to determine the cold blocks.</p>
+<p>The Jump-to-Fallthrough transformation pass attempts to move the dispatch to the next bytecode to the last instruction, so that the jump could be eliminated to a fallthrough, reducing an unnecessary branch. This is needed because at LLVM IR level, a dispatch is a tail call, and LLVM is not aware of the fact that a dispatch to the next bytecode could potentially<sup class="footnote-ref"><a href="#fn16" id="fnref16">[16]</a></sup> be implemented by a fallthrough if it were the last instruction. Deegen implemented a simple pass to address this issue, which attempts to make the fallthrough possible by reordering ASM blocks and doing very limited rewrites like flipping branch conditions.</p>
+<h3 id="An-End-to-End-Example">An End-to-End Example</h3>
+<p>To demonstrate how the actual JIT code generated by Deegen’s baseline JIT looks like, we will use the following Lua example that computes a factorial:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- Intentionally written without 'local' so that 'fact' </span></span><br><span class="line"><span class="comment">-- is a global variable lookup, to demonstrate the JIT</span></span><br><span class="line"><span class="comment">-- code generated from Deegen's generic inline caching API</span></span><br><span class="line">fact = <span class="function"><span class="keyword">function</span><span class="params">(n)</span></span></span><br><span class="line">  <span class="keyword">if</span> (n &lt; <span class="number">1</span>) <span class="keyword">then</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span></span><br><span class="line">  <span class="keyword">end</span> </span><br><span class="line">  <span class="keyword">return</span> fact(n<span class="number">-1</span>) * n</span><br><span class="line"><span class="keyword">end</span></span><br></pre></td></tr></table></figure>
+<p>While it is a simple example, it demonstrates almost all the important things in a baseline JIT: basic operations such as arithmetic and comparison, control flow, function calls, call inline caching (automatically provided as part of Deegen) and table inline caching (implement using Deegen’s generic IC API).</p>
+<p>The machine code generated by Deegen’s baseline JIT is as follows:</p>
+<p>TODO: add figure, add explanation</p>
+<h3 id="Performance-Comparison">Performance Comparison</h3>
+<p>TODO</p>
+<h3 id="Conclusion-Thoughts-and-Future-Works">Conclusion Thoughts and Future Works</h3>
+<p>TODO</p>
+<hr>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>Since a JIT compiler works at runtime, the overall latency experienced by the user is the sum of the compilation time to generate the code (startup delay) and the execution time of the generated code. So for maximum throughput, one wants a multi-tier architecture. The <em>baseline JIT</em> is a JIT compiler that specializes at fast compilation, and is used to compile not-so-hot code. For a small set of hot functions identified by the baseline JIT, the <em>optimizing JIT</em> kicks in to generate better code at a much higher compilation cost. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>And even worse, due to the nature of assembly, there is little code sharing across the VM tiers or across hardware architectures, despite that all the VM tiers must stay in sync and exhibit identical behavior, or you get a VM bug. <!--This is another reason one might want to use `Deegen`: by automatically generating all the VM tiers from a single source of truth, `Deegen` removed all the code duplications, and all the generated VM tiers are automatically in sync.--> <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>There are other reasons from the usability and engineering side as well. For example, by removing the “compile” step in the edit-compile-run cycle, dynamic languages have faster iterative development cycle. And libraries written in dynamic languages can be distributed as source code. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>Directly translating a dynamic language program to native code will result in a huge amount of native code. This is mainly due to the dynamic typed nature: every innocent operation in dynamic language is actually a huge switch depending on the input types, and can have drastically complex slow paths. The statically-generated logic must deal with all such cases for correctness, even though most of the slow paths are never hit at runtime. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>Recall that in most dynamic languages, functions are first-class value. So the function held by <code>f</code> can always be changed (and in fact, <code>f</code> is not even necessarily a function object), even though in the majority of use cases, the function is used like a C function so <code>f</code> always just hold the same value. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn6" class="footnote-item"><p>This is the simplest strategy, but one can clearly do some fancier stuffs here. For example, JavaScriptCore will generate a binary search tree to reduce the number of jump instructions executed, so that they can support a higher number of IC entries. However, based on words from JSC developer, this optimization has very limited effect in practice. <a href="#fnref6" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn7" class="footnote-item"><p>OSR stands for On-Stack Replacement. OSR-Exit is also more widely known as <a href="https://dl.acm.org/doi/10.1145/143103.143114" target="_blank" rel="noopener"><em>deoptimization</em></a>, a technique originally used to enhance the debuggability of optimized code. However, we will stick to the term “OSR-Exit” as it better reflects the nature of this technique in the VM use case: exiting to a lower tier using an exotic method (on-stack replacement). <a href="#fnref7" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn8" class="footnote-item"><p>Being an acute reader like you, I’m sure you can already imagine a primitive JIT that works by wiring up different functions that implement basic functionalities like constant, addition, pointer dereference, etc. <a href="#fnref8" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn9" class="footnote-item"><p>While seemingly scary to mess up with assembly code directly, one can easily prove the correctness from the semantics of <code>jmp</code>. <a href="#fnref9" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn10" class="footnote-item"><p>Acute readers might have noticed that this statement is not 100% true. We will revisit it later. <a href="#fnref10" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn11" class="footnote-item"><p>Note that here, by saying register allocation and instruction selection, we meant those that work <em>across stencils</em>. Inside a stencil, since the code is compiled by LLVM, we already have good RA and ISel. <a href="#fnref11" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn12" class="footnote-item"><p>The decision to give up non-local RA/ISel is justified by designs of existing state-of-the-art VMs. For example, in JavaScriptCore, only the fourth-tier heavyweight optimizing JIT (FTL) employs codegen-level optimizations (RA, ISel, etc.) that works across bytecode or DFG IR nodes. <a href="#fnref12" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn13" class="footnote-item"><p>Unfortunately, I never realized the larger picture until after the Copy-and-Patch paper was already published, so this wrong belief is also published with the paper… <a href="#fnref13" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn14" class="footnote-item"><p>Under small code model, and not considering complications like position-independent code (PIC) and position-independent executable (PIE). <a href="#fnref14" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn15" class="footnote-item"><p>This is in fact an exaggregated statement. Hidden class <em>without</em> inline caching is much slower than a naive implementation (i.e., no hidden class at all). Therefore, if one were to actually seriously implement a baseline JIT without inline caching, he/she wouldn’t employ hidden class either. In that case, the end result is definitely going to be <em>more than</em> 20% faster than interpreter with inline caching. <a href="#fnref15" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn16" class="footnote-item"><p>Note that the JIT code for a bytecode may consist of multiple stencils, for example, a <code>Call</code> needs both the main logic and the return continuation. Clearly, the jump-to-fallthrough transform is only valid for the last instruction of the last stencil for the bytecode. <a href="#fnref16" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="https://sillycross.github.io/draft2/index.html" data-id="clh9ywu8a0005dwor3wlf8qmj" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="../2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
+        </li>
+      
+        <li>
+          <a href="../2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+        </li>
+      
+        <li>
+          <a href="../2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
+        </li>
+      
+        <li>
+          <a href="../2022/06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
+        </li>
+      
+        <li>
+          <a href="../2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2023 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../fancybox/jquery.fancybox.css">
+
+  
+<script src="../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- Begin: Injected MathJax -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config("");
+</script>
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Queue(function() {
+    var all = MathJax.Hub.getAllJax(), i;
+    for(i=0; i < all.length; i += 1) {
+      all[i].SourceElement().parentNode.className += ' has-jax';
+    }
+  });
+</script>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML">
+</script>
+<!-- End: Injected MathJax -->
+<!-- hexo-inject:end -->
+ 
+
+</body>
+</html>
