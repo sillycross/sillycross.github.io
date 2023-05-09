@@ -5,12 +5,12 @@
   
   <title>Building a baseline JIT for Lua automatically | </title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series of posts.I’m trying to make this post self-contained, but feel free to read the prequel for mo">
+  <meta name="description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automati">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Building a baseline JIT for Lua automatically">
 <meta property="og:url" content="https://sillycross.github.io/draft2/index.html">
 <meta property="og:site_name">
-<meta property="og:description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series of posts.I’m trying to make this post self-contained, but feel free to read the prequel for mo">
+<meta property="og:description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automati">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-jit-pipeline.png">
@@ -26,7 +26,7 @@
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/callbr-example.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/ic-extraction.png">
 <meta property="article:published_time" content="2023-05-05T00:00:00.000Z">
-<meta property="article:modified_time" content="2023-05-09T02:48:45.988Z">
+<meta property="article:modified_time" content="2023-05-09T23:30:41.975Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
@@ -39,7 +39,7 @@
     <!--
 <link rel="stylesheet" href="../css/source_code_pro.css">
 -->
-    <link rel="stylesheet" href="../css/source_code_pro.css?ver=20230504">
+    <link rel="stylesheet" href="/css/source_code_pro.css?ver=20230504">
   
 
   <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
@@ -47,11 +47,11 @@
 <link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css">
  -->
 
-<link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css?ver=20230504">
+<link rel="stylesheet" href="/css/bootstrap/bootstrap.min.css?ver=20230504">
 
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
 
-<link rel="stylesheet" href="../css/styles.css?ver=20230504">
+<link rel="stylesheet" href="/css/styles.css?ver=20230504">
 
 <!--  
 <link rel="stylesheet" href="../css/styles.css">
@@ -148,7 +148,7 @@
       
         <p><text style="color:red">This is a draft. Please do not distribute the URL to public (forums etc).</text></p>
 <blockquote>
-<p><text style="font-size:15px;">This is the Part 2 of a series of posts.<br>I’m trying to make this post self-contained, but feel free to read the prequel for more context: <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></text></p>
+<p><text style="font-size:15px;">This is the Part 2 of a series. Feel free to read the prequel for more context: <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></text></p>
 </blockquote>
 <p>Building a good VM for a dynamic language takes a ton of engineering. The best-performing VMs (e.g., <a href="https://github.com/WebKit/WebKit/tree/main/Source/JavaScriptCore" target="_blank" rel="noopener">JavaScriptCore</a>, <a href="https://v8.dev/" target="_blank" rel="noopener">V8</a>, <a href="https://firefox-source-docs.mozilla.org/js/index.html" target="_blank" rel="noopener">SpiderMonkey</a>) employ at least 3 VM tiers (interpreter, baseline JIT<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> and optimizing JIT), and pervasively use hand-coded assembly in every VM tier<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>. Optimizations such as inline caching and type speculation are required to get high performance, but they require high expertise and introduce additional engineering complexity.</p>
 <!--The best interpreters are hand-coded in assembly. The baseline JIT compiler[^1] is more assembly, plus an assembler to assemble them to machine code at runtime. The optimizing JIT compiler is even more assembly among other things[^2]. -->
@@ -250,7 +250,7 @@
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_lhs</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_rhs</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">evaluate_add</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> evaluate_lhs() + evaluate_rhs();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>When the C++ compiler compiles the above code, it knows nothing about the definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>. But it can somehow produce an object file, and the linker can link the object file to <em>any</em> definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>, and the final executable would just work.</p>
 <h4 id="Relocation-Code-Generation">Relocation = Code Generation</h4>
-<p>What does it mean? The object file must contains structured information on how to link <code>evaluate_add</code> against <em>any</em> definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>. So if we parse the object file to get that info, at runtime, we can act as the linker, and “link” <code>evaluate_add</code> against any runtime-known <code>evaluate_lhs</code> and <code>evaluate_rhs</code> of our choice to perform an <code>add</code>. This is effectively a JIT<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup>!</p>
+<p>What does it mean? The object file must contain structured information on how to link <code>evaluate_add</code> against <em>any</em> definition of <code>evaluate_lhs</code> and <code>evaluate_rhs</code>. So if we parse the object file to get that info, at runtime, we can act as the linker, and “link” <code>evaluate_add</code> against any runtime-known <code>evaluate_lhs</code> and <code>evaluate_rhs</code> of our choice to perform an <code>add</code>. This is effectively a JIT<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup>!</p>
 <p>Of course, the “structured information” has its formal name: <em>linker relocation records</em>. But the name is not important. The important thing is as long as we parsed out those information, we can use them at runtime to emit executable code. And this process is extremely cheap: all it takes is a <code>memcpy</code> followed by a few scalar additions, thus the name “Copy-and-Patch”.</p>
 <p>For example, the <code>evaluate_add</code> we just saw will produce an object file with the following contents:</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">evaluate_add:</span><br><span class="line">  53 e8 00 00 00 00 89 c3 e8 00 00 00 00 01 d8 5b c3 </span><br></pre></td></tr></table></figure>
@@ -439,7 +439,7 @@
 <p>Now we have the CFG of the assembly, we can then figure out the ASM blocks only reachable from the function entry, and only reachable from each IC logic kind, as shown below.</p>
 <p><img src="/images/2023-05-12/ic-extraction.png" alt="ASM CFG Analysis and IC Extraction"></p>
 <p>Note that the logic entry of each IC kind must not be reachable from the function entry, because they are only reachable by the <code>CallBr</code>, but we have removed those control flow edges as the <code>CallBr</code> has been removed by us.</p>
-<p>Finally, we can separate out the IC logic from the main function logic. For the main function, we only retain ASM blocks reachable from the function entry. And for each IC kind, we only retain ASM blocks reachable from its logic entry but not the main function entry. The extracted assembly are then compiled to object file and extracted to a Copy-and-Patch stencil, so we can JIT them at runtime.</p>
+<p>Finally, we can separate out the IC logic from the main function logic. For the main function, we only retain ASM blocks reachable from the function entry. And for each IC kind, we only retain ASM blocks reachable from its logic entry but not the main function entry. Each piece of extracted assembly is then compiled to object file and extracted to a Copy-and-Patch stencil, so we can JIT it at runtime.</p>
 <p>There are still some minor issues that we haven’t covered, such as how we build up the dynamic IC check chain, and how exactly the self-modifying code region is constructed. But the idea is similar to how we supported inline caching: most of the heavy-lifting of actually building up the logic is done at LLVM, and <code>InlineAsm</code> is repurposed as a tool to pass down information to assembly. Then at assembly level, Deegen can piece everything together by very simple transformations that requires little to no assembly knowledge.</p>
 <h4 id="Inline-Caching-Putting-Everything-Together">Inline Caching: Putting Everything Together</h4>
 <p>TODO: add an architecture figure</p>
@@ -515,7 +515,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/draft2/index.html" data-id="clhfoadoc000icgov0qa4a7ds" class="article-share-link">
+      <a data-url="https://sillycross.github.io/draft2/index.html" data-id="clhgwnjun000jbmosg4ql42e1" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
