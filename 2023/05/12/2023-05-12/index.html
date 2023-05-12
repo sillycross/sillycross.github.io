@@ -5,12 +5,12 @@
   
   <title>Building a baseline JIT for Lua automatically | </title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automati">
-<meta property="og:type" content="website">
+  <meta name="description" content="This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automatically  Building a good VM for a dynamic language takes a ton of engineerin">
+<meta property="og:type" content="article">
 <meta property="og:title" content="Building a baseline JIT for Lua automatically">
-<meta property="og:url" content="https://sillycross.github.io/draft2/index.html">
+<meta property="og:url" content="https://sillycross.github.io/2023/05/12/2023-05-12/index.html">
 <meta property="og:site_name">
-<meta property="og:description" content="This is a draft. Please do not distribute the URL to public (forums etc).  This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automati">
+<meta property="og:description" content="This is the Part 2 of a series. Feel free to read the prequel for more context: Building the fastest Lua interpreter automatically  Building a good VM for a dynamic language takes a ton of engineerin">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-jit-pipeline.png">
@@ -25,26 +25,30 @@
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/call-bytecode-closure-call-ic-1.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/callbr-example.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/ic-extraction.png">
-<meta property="article:published_time" content="2023-05-05T00:00:00.000Z">
-<meta property="article:modified_time" content="2023-05-09T23:30:41.975Z">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/deegen-ic-design-detail.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/getbyid_ic.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/factorial-jit-code.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/perf-numbers.png">
+<meta property="article:published_time" content="2023-05-12T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-05-12T14:34:34.554Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
   
-    <link rel="alternate" href="../atom.xml" title="" type="application/atom+xml">
+    <link rel="alternate" href="../../../../atom.xml" title="" type="application/atom+xml">
   
   
   
     <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
     <!--
-<link rel="stylesheet" href="../css/source_code_pro.css">
+<link rel="stylesheet" href="../../../../css/source_code_pro.css">
 -->
     <link rel="stylesheet" href="/css/source_code_pro.css?ver=20230504">
   
 
   <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
 <!--  
-<link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css">
+<link rel="stylesheet" href="../../../../css/bootstrap/bootstrap.min.css">
  -->
 
 <link rel="stylesheet" href="/css/bootstrap/bootstrap.min.css?ver=20230504">
@@ -54,7 +58,7 @@
 <link rel="stylesheet" href="/css/styles.css?ver=20230504">
 
 <!--  
-<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../../../../css/styles.css">
  -->
 
   
@@ -62,7 +66,7 @@
   
   <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
   
-<script src="../js/jquery.min.js"></script>
+<script src="../../../../js/jquery.min.js"></script>
 
 
 <meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
@@ -86,16 +90,16 @@
       <ul class="nav navbar-nav">
         
           <li><a class=""
-                 href="../index.html">Home</a></li>
+                 href="../../../../index.html">Home</a></li>
         
           <li><a class=""
-                 href="../archives/">Archives</a></li>
+                 href="../../../../archives/">Archives</a></li>
         
           <li><a class=""
-                 href="../about/">About</a></li>
+                 href="../../../../about/">About</a></li>
         
           <li><a class=""
-                 href="../cnblog/">Chinese Blog</a></li>
+                 href="../../../../cnblog/">Chinese Blog</a></li>
         
       </ul>
 
@@ -120,7 +124,7 @@
 
     <div class="row">
         <div class="col-sm-8 blog-main">
-          <article id="page-" class="article article-type-page" itemscope itemprop="blogPost">
+          <article id="post-2023-05-12" class="article article-type-post" itemscope itemprop="blogPost">
 
   <header class="article-header">
     
@@ -135,7 +139,7 @@
 
   <div class="article-meta">
     <div class="article-datetime">
-  <a href="" class="article-date"><time datetime="2023-05-05T00:00:00.000Z" itemprop="datePublished">2023-05-05</time></a>
+  <a href="" class="article-date"><time datetime="2023-05-12T00:00:00.000Z" itemprop="datePublished">2023-05-12</time></a>
 </div>
 
     
@@ -146,17 +150,16 @@
 
     <div class="article-entry" itemprop="articleBody">
       
-        <p><text style="color:red">This is a draft. Please do not distribute the URL to public (forums etc).</text></p>
-<blockquote>
-<p><text style="font-size:15px;">This is the Part 2 of a series. Feel free to read the prequel for more context: <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></text></p>
+        <blockquote>
+<p><text style="font-size:15px;">This is the Part 2 of a series. Feel free to read the prequel for more context: <a href="/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></text></p>
 </blockquote>
 <p>Building a good VM for a dynamic language takes a ton of engineering. The best-performing VMs (e.g., <a href="https://github.com/WebKit/WebKit/tree/main/Source/JavaScriptCore" target="_blank" rel="noopener">JavaScriptCore</a>, <a href="https://v8.dev/" target="_blank" rel="noopener">V8</a>, <a href="https://firefox-source-docs.mozilla.org/js/index.html" target="_blank" rel="noopener">SpiderMonkey</a>) employ at least 3 VM tiers (interpreter, baseline JIT<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup> and optimizing JIT), and pervasively use hand-coded assembly in every VM tier<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>. Optimizations such as inline caching and type speculation are required to get high performance, but they require high expertise and introduce additional engineering complexity.</p>
 <!--The best interpreters are hand-coded in assembly. The baseline JIT compiler[^1] is more assembly, plus an assembler to assemble them to machine code at runtime. The optimizing JIT compiler is even more assembly among other things[^2]. -->
 <!--### Deegen: High Performance VMs at Low Engineering Cost-->
 <p><em>Deegen</em> is my research meta-compiler to make high-performance VMs easier to write. Deegen takes in a semantic description of the VM bytecodes in C++, and use it as the single source of truth to <em>automatically generate</em> a high-performance VM at build time, as illustrated below.</p>
-<p><img src="/images/2023-05-12/deegen-arch.png" alt="The ultimate vision and current state of Deegen"></p>
-<p>In <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">a prior post</a>, we used Deegen to build the fastest Lua 5.1 interpreter to date, outperforming LuaJIT’s interpreter by an average of 34% across a variety of Lua benchmarks. The VM was named <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener"><em>LuaJIT Remake</em></a>, even though it had no JIT tiers at that time.</p>
-<p>Today, after months of additional work, <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener"><em>LuaJIT Remake</em></a> is finally a JIT-capable VM. It is now equipped with a state-of-the-art baseline JIT compiler, automatically generated by Deegen. The baseline JIT features:</p>
+<p><img src="/images/2023-05-12/deegen-arch.png" alt="Deegen: automatically generating a high-performance VM!"></p>
+<p>In <a href="https://sillycross.github.io/2022/11/22/2022-11-22/">a prior post</a>, Deegen automatically generated the fastest Lua 5.1 interpreter to date, outperforming LuaJIT’s interpreter by an average of 34% across a variety of Lua benchmarks. The VM was named <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener"><em>LuaJIT Remake</em></a>, even though it had no JIT tiers at that time.</p>
+<p>Today, after months of additional work, <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener"><em>LuaJIT Remake</em></a> is finally a JIT-capable VM. It is now equipped with a state-of-the-art baseline JIT compiler, also automatically generated by Deegen. The baseline JIT features:</p>
 <ul>
 <li>Extremely fast compilation speed.</li>
 <li>High-quality machine code (under the design constraints of a baseline JIT).</li>
@@ -368,7 +371,7 @@
 <p>As one can see, the code-generation logic is just what we have explained in the previous subsection. It first decodes the bytecode, then performs a copy-and-patch to generate the JIT fast path and the JIT slow path logic. The expression that defines each runtime constant is replayed to compute the patch value in the instruction stream. Besides the machine code, it also generates the <code>SlowPathData</code> stream and other minor support data. Finally, it advances pointers and dispatch to the next codegen function to codegen the next bytecode. The whole process is completely branchless (except the tail dispatch) by design.</p>
 <h3 id="Supporting-Inline-Caching-the-Art-of-Repurposing-Existing-Tools-Evermore">Supporting Inline Caching: the Art of Repurposing Existing Tools, Evermore</h3>
 <p>Due to inherent design constraints of a baseline JIT (e.g., compilation must be fast, no OSR-exit is allowed), inline caching (IC) is the only high-level optimization tool available to the baseline JIT.</p>
-<p>And inline caching is powerful: if LJR’s baseline JIT didn’t have inline caching, it would only be 20% faster than LJR’s interpreter (which employed IC)<sup class="footnote-ref"><a href="#fn15" id="fnref15">[15]</a></sup>.</p>
+<p>And inline caching is powerful: on benchmarks that extensively work with Lua tables, a baseline JIT with IC can often be more than 100% faster than the same baseline JIT without IC<sup class="footnote-ref"><a href="#fn15" id="fnref15">[15]</a></sup>.</p>
 <p>In this section, we will elaborate how Deegen supports inline caching.</p>
 <h4 id="How-IC-works-in-Deegen-a-Step-by-Step-Example-of-Call-IC">How IC works in Deegen: a Step-by-Step Example of Call IC</h4>
 <p>For a beginner’s introduction to what IC is, please read the <a href="#deegen_baseline_jit_background_section">background section</a>. However, to understand how IC actually works in Deegen’s baseline JIT, the easiest way is to walk through an assembly example. Here, we will use a simplified <code>Call</code> bytecode, which performs a call with no arguments and discards all return values, to demonstrate how <em>call IC</em> works.</p>
@@ -416,7 +419,7 @@
 <p>GCC supports a little-known extension feature called <a href="https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html#:~:text=6.47.2.7%20Goto%20Labels" target="_blank" rel="noopener">ASM-goto</a>, which basically allows one to write inline assembly that branches from assembler code to C labels. And LLVM, aiming for compatibility with GCC, <a href="https://lists.llvm.org/pipermail/llvm-dev/2018-October/127239.html" target="_blank" rel="noopener">has also supported this feature a few years ago</a> by a special <code>CallBr</code> IR instruction.</p>
 <p>I just want to say a big thank you to the GCC developers who designed this feature and the LLVM developers who added support for it! Without this feature, it’s very likely Deegen couldn’t support inline caching at all.</p>
 <p>So how does ASM-goto have anything to do with inline caching?</p>
-<p>As you might have seen from the assembly example above, the hard part of IC is that each IC case is a piece of machine code that directly “clings” to the main logic. It cannot be implemented by a separate function due to the call overhead and the requirements of Lua’s stackful coroutine. It must work directly using the context (e.g., which register holds which value) of the main logic, and could transfer control back to the main logic.</p>
+<p>As you might have seen from the assembly example above, the hard part of IC is that each IC case is a piece of machine code that directly “clings” to the main logic. It cannot be implemented by a separate function due to the call overhead and the requirements of Lua’s stackful coroutine. It must work directly using the context (e.g., which register holds which value) of the main logic, and could transfer control to different destinations in the main logic.</p>
 <p>ASM-goto (and its underlying <code>CallBr</code> LLVM IR) provided <em>exactly</em> the semantics we want. Since it is an <code>InlineAsm</code>, LLVM is <em>required</em> to treat its contents as opaque. All LLVM knows is that after executing the <code>InlineAsm</code>, control will be transferred to one of the destinations specified in the <code>CallBr</code>.</p>
 <p>In other words, we repurpose <code>CallBr</code> as a way to model “a control flow transfer in an unspecified manner”. At runtime, we are building up a dynamic chain of IC cases; but if one views the chain-check logic as a black box, then it can be characterized as: after the black box is executed, control is transferred to either an IC hit case specialized to the cached values, or the IC miss slowpath. This is exactly the semantics <code>CallBr</code> provided, so we can safely model it using <code>CallBr</code>.</p>
 <p>But this is still far from enough. Now we have a way to model the control flow of the dynamic IC chain in LLVM IR, but it’s still unclear how we can extract the IC logic from the main function, implement the IC check chain, and do all the self-modifying code stuff.</p>
@@ -441,28 +444,78 @@
 <p>Note that the logic entry of each IC kind must not be reachable from the function entry, because they are only reachable by the <code>CallBr</code>, but we have removed those control flow edges as the <code>CallBr</code> has been removed by us.</p>
 <p>Finally, we can separate out the IC logic from the main function logic. For the main function, we only retain ASM blocks reachable from the function entry. And for each IC kind, we only retain ASM blocks reachable from its logic entry but not the main function entry. Each piece of extracted assembly is then compiled to object file and extracted to a Copy-and-Patch stencil, so we can JIT it at runtime.</p>
 <p>There are still some minor issues that we haven’t covered, such as how we build up the dynamic IC check chain, and how exactly the self-modifying code region is constructed. But the idea is similar to how we supported inline caching: most of the heavy-lifting of actually building up the logic is done at LLVM, and <code>InlineAsm</code> is repurposed as a tool to pass down information to assembly. Then at assembly level, Deegen can piece everything together by very simple transformations that requires little to no assembly knowledge.</p>
-<h4 id="Inline-Caching-Putting-Everything-Together">Inline Caching: Putting Everything Together</h4>
-<p>TODO: add an architecture figure</p>
+<h4 id="The-Inline-Slab-Optimization">The Inline Slab Optimization</h4>
+<p>Deegen employed one additional optimization for IC: the <em>Inline Slab</em> optimization (again, the terminology is a JavaScriptCore jargon).</p>
+<p>Conceptually, the idea is very simple: currently, each IC case is an outlined piece of JIT code. As a result, control has to branch from main logic to the IC case, and then from the IC case back to the main logic in the end. So why not use the SMC region to hold one IC case? Now, the “blessed” IC case sitting directly inside the SMC region can be executed directly, saving one or two jumps<sup class="footnote-ref"><a href="#fn16" id="fnref16">[16]</a></sup>.</p>
+<p>Of course, it is harder to do than said. One has to decide a good size for the inline slab (i.e., the SMC region), as only IC whose size is less than the inline slab size can sit in the inline slab. And updating the patchable jump in the SMC region is more complicated, as the location of the jump is different depending on whether the inline slab exists. Finally, the inline slab version of the IC has slightly different logic from the normal version: the tail branch could potentially be eliminated, and one must pad NOPs to exactly the size of the inline slab.</p>
+<p>As a result, even in JavaScriptCore, the inline slab optimization requires quite some engineering efforts, e.g., more hand-rolled assembly, <a href="https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/bytecode/InlineAccess.h.html">manual book-keeping of the inline slab sizes</a> that has to be updated whenever the generated assembly changes, etc.</p>
+<p>Fortunately, in Deegen, the inline slab optimization is employed fully automatically. So for a language implementer, the additional ~4% performance on average (and occasionally 10+% on IC intensive workloads) from inline slab comes for free!</p>
+<h4 id="Runtime-Support-and-IC-Design-Summary">Runtime Support, and IC Design Summary</h4>
+<p>Finally, the VM runtime needs to manage the IC. For example, it needs to reclaim the JIT code memory when the IC is invalidated, and upon tiering-up, it needs to update all the call IC cases to point to the new entry point.</p>
+<p>Therefore, in additional to the actual JIT’ed code, we also need to allocate a piece of metadata to manage each IC. The metadata are chained into a linked list at the use site of the IC (the <code>ICSite</code>), which resides in the <code>SlowPathData</code> stream.</p>
+<p>Putting everything about Deegen’s IC design together into one figure:</p>
+<p><img src="/images/2023-05-12/deegen-ic-design-detail.png" alt="An overview of Deegen's design of Inline Caching in more detail"></p>
+<h4 id="Full-Example-for-Deegen’s-Generic-IC-TableGetById-Bytecode">Full Example for Deegen’s Generic IC: <code>TableGetById</code> Bytecode</h4>
+<p>To conclude our discussions on inline caching, we will present a full example for the <code>TableGetById</code> (aka., <code>TGETS</code> in LuaJIT) bytecode.</p>
+<p>The bytecode takes two operands: <code>base</code> and <code>index</code>, where <code>index</code> is a constant string, and returns <code>base[index]</code>. Any Lua string property access, for example, <code>employee.name</code> or <code>animal.weight</code>, would generate this bytecode.</p>
+<p>In <em>LuaJIT Remake</em>, a Lua table is not implemented by a plain hash table with an array part, but employs <a href="https://github.com/luajit-remake/luajit-remake/blob/b9b5274d15373a24f9297cf551621506f87b375f/runtime/structure.h" target="_blank" rel="noopener">hidden class</a> for better performance, using a design <a href="https://webkit.org/blog/10308/speculation-in-javascriptcore/" target="_blank" rel="noopener">mostly mirroring JavaScriptCore’s</a>. Deegen supports <a href="/2022/11/22/2022-11-22/#deegen_generic_inline_caching_api">generic IC API</a> to allow easy deployment of IC via clever use of C++ lambdas. The actual implementation of the C++ bytecode semantic for <code>TableGetById</code> can be <a href="https://github.com/luajit-remake/luajit-remake/blob/b9b5274d15373a24f9297cf551621506f87b375f/annotated/bytecodes/table_get_by_id.cpp#L91" target="_blank" rel="noopener">found here</a>.</p>
+<p>The figure below is the disassembly of the actual machine code generated by the baseline JIT, alongside the JIT’ed code for all 6 kinds of IC stubs, as well as their inline-slab versions. As before, the runtime constants burnt into the instruction stream are shown in purple text.</p>
+<p><img src="/images/2023-05-12/getbyid_ic.png" alt="Disassembly of the main logic and all IC logic generated for the TableGetById bytecode"></p>
+<p>As you can see above, in the good case of an inline-slab IC hit for a table without metatable (which is very common), a <code>TableGetById</code> can be accomplished with no taken branches and in less than 10 instructions. This is why IC could drastically speed up table operations.</p>
+<p>On the other hand, as you can also see above, implementing IC by hand requires a deep understanding of assembly and a significant amount of engineering. This is exactly where Deegen comes in. With Deegen’s generic IC API that makes all of these happen automatically, a language implementer can enjoy the benefits of IC without the high engineering cost.</p>
 <h4 id="The-Hot-Cold-Splitting-Pass-and-Jump-to-Fallthrough-Pass">The Hot-Cold Splitting Pass and Jump-to-Fallthrough Pass</h4>
 <p>Finally, since we already have an ASM transformation infrastructure, why not use it for more good?</p>
 <p>The Hot-Cold Splitting Pass works by reordering ASM blocks and move cold blocks to a separated text section, which reduces some unnecessary branches and improves code locality. Of course, the stencil extraction logic that generates the copy-and-patch stencil from the object file needs to be made aware of this and extract both sections, but this is not hard to do. To figure out which blocks are cold, ideally, one should write a LLVM backend pass. However, as explained before, I still haven’t figured out how to write a LLVM backend pass, so currently this is accomplished by injecting debug info to map assembly blocks back to LLVM IR blocks, and use LLVM IR’s block frequency infrastructure to determine the cold blocks.</p>
-<p>The Jump-to-Fallthrough transformation pass attempts to move the dispatch to the next bytecode to the last instruction, so that the jump could be eliminated to a fallthrough, reducing an unnecessary branch. This is needed because at LLVM IR level, a dispatch is a tail call, and LLVM is not aware of the fact that a dispatch to the next bytecode could potentially<sup class="footnote-ref"><a href="#fn16" id="fnref16">[16]</a></sup> be implemented by a fallthrough if it were the last instruction. Deegen implemented a simple pass to address this issue, which attempts to make the fallthrough possible by reordering ASM blocks and doing very limited rewrites like flipping branch conditions.</p>
+<p>The Jump-to-Fallthrough transformation pass attempts to move the dispatch to the next bytecode to the last instruction, so that the jump could be eliminated to a fallthrough, reducing an unnecessary branch. This is needed because at LLVM IR level, a dispatch is a tail call, and LLVM is not aware of the fact that a dispatch to the next bytecode could potentially<sup class="footnote-ref"><a href="#fn17" id="fnref17">[17]</a></sup> be implemented by a fallthrough if it were the last instruction. Deegen implemented a simple pass to address this issue, which attempts to make the fallthrough possible by reordering ASM blocks and doing very limited rewrites like flipping branch conditions.</p>
 <h3 id="An-End-to-End-Example">An End-to-End Example</h3>
-<p>To demonstrate how the actual JIT code generated by Deegen’s baseline JIT looks like, we will use the following Lua example that computes a factorial:</p>
+<p>To demonstrate how the actual end-to-end JIT’ed code generated by the baseline JIT looks like, we will use the following Lua example that computes a factorial:</p>
 <figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- Intentionally written without 'local' so that 'fact' </span></span><br><span class="line"><span class="comment">-- is a global variable lookup, to demonstrate the JIT</span></span><br><span class="line"><span class="comment">-- code generated from Deegen's generic inline caching API</span></span><br><span class="line">fact = <span class="function"><span class="keyword">function</span><span class="params">(n)</span></span></span><br><span class="line">  <span class="keyword">if</span> (n &lt; <span class="number">1</span>) <span class="keyword">then</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span></span><br><span class="line">  <span class="keyword">end</span> </span><br><span class="line">  <span class="keyword">return</span> fact(n<span class="number">-1</span>) * n</span><br><span class="line"><span class="keyword">end</span></span><br></pre></td></tr></table></figure>
 <p>While it is a simple example, it demonstrates almost all the important things in a baseline JIT: basic operations such as arithmetic and comparison, control flow, function calls, call inline caching (automatically provided as part of Deegen) and table inline caching (implement using Deegen’s generic IC API).</p>
-<p>The machine code generated by Deegen’s baseline JIT is as follows:</p>
-<p>TODO: add figure, add explanation</p>
+<p>The above Lua function results in 8 bytecodes:</p>
+<ul>
+<li>(Bytecode #0) BranchIfNotLessThan {<code>Slot(0)</code>, <code>Double(1)</code>} → #3</li>
+<li>(Bytecode #1) ConstInt16  {<code>1</code>} → <code>Slot(1)</code></li>
+<li>(Bytecode #2) Return {<code>SlotRange [1, 2)</code>}</li>
+<li>(Bytecode #3) GlobalGet {<code>String(&quot;fact&quot;)</code>} → <code>Slot(1)</code></li>
+<li>(Bytecode #4) ArithmeticSub {<code>Slot(0)</code>, <code>Double(1)</code>} → <code>Slot(5)</code></li>
+<li>(Bytecode #5) Call { Frame: <code>Slot(1)</code>, #arg: <code>1</code>, #ret: <code>1</code> }</li>
+<li>(Bytecode #6) ArithmeticMul {<code>Slot(1)</code>,<code>Slot(0)</code>} → <code>Slot(1)</code></li>
+<li>(Bytecode #7) Return {<code>SlotRange [1, 2)</code>}</li>
+</ul>
+<p>For clarity, we demonstrate the code <em>after</em> the function has been executed, so all the self-modifying code regions (including inline slabs) have been repatched, and outlined IC stubs have been created.</p>
+<p>I manually grabbed the JIT’ed code using GDB and hand-remapped all the labels, so please pardon me if I made an mistake. The disassembly is as follows:</p>
+<p><img src="/images/2023-05-12/factorial-jit-code.png" alt="Disassembly of the JIT'ed code for the factorial function"></p>
+<p>Note that under normal circumstances (i.e., a number is passed in as parameter to <code>fact</code>), the <code>GlobalGet</code> and <code>Call</code> slow path will be executed once to create the IC. After that, none of the slow path logic will ever be executed, and none of the self-modifying code region in the fast path will get repatched further.</p>
 <h3 id="Tiering-up-Logic">Tiering-up Logic</h3>
-<p>TODO</p>
+<p>The last bit of complexity is the tiering-up logic. In a multi-tier VM, the user program starts execution in the interpreter tier, and hot functions are eventually tiered up to the baseline JIT tier (and potentially further to the optimizing JIT tier, but that’s future work).</p>
+<p>To support tiering-up, we have two problems to solve. First, how hot functions could be identified. Second, how future calls to the tiered-up function could get redirected to the JIT’ed version.</p>
+<p>Let’s look at the second problem first. While seemingly trivial (just change the entry point stored in the function prototype), it is actually not that trivial due to the existence of call IC. When a function gets tiered-up, every call IC that caches on the function must be updated and redirected to the new entry point. To achieve this, all the call IC are chained into a circular doubly-linked list on the function prototype that it caches on. In addition, Deegen generates information on how one can update the JIT’ed code of a call IC to change the function entry point it branches to. Then, whenever a function is tiered up, one can iterate through all the call ICs caching on the function using the doubly-linked list, and update each of them to point to the new entry.</p>
+<p>For the first problem, the idea is to increment a per-function counter whenever the interpreter reaches a loop bytecode or a function return bytecode. When the counter reaches a threshold, we trigger JIT compilation and redirect control to the JIT’ed code. Unfortunately, the engineering of this part has not been finished. I have to publish this post now, because this post is used as the reading material for a talk a couple of days later :(</p>
+<p>This also means that currently we cannot tier-up from interpreter to baseline JIT, so for the benchmarks, everything is directly compiled by the baseline JIT and executed in baseline JIT tier.</p>
 <h3 id="Performance-Evaluation">Performance Evaluation</h3>
-<p>Before we analyze the results, we want to stress that LJR and LuaJIT employed drastically different high-level VM architecture, mid-level VM design and low-level implementation choices. And synthetic benchmarks are well-known (see [<a href="https://blog.mozilla.org/nnethercote/2014/06/16/a-browser-benchmarking-manifesto/" target="_blank" rel="noopener">1</a>,<a href="https://v8.dev/blog/retiring-octane" target="_blank" rel="noopener">2</a>,<a href="https://www.microsoft.com/en-us/research/publication/jsmeter-characterizing-real-world-behavior-of-javascript-programs/" target="_blank" rel="noopener">3</a>,<a href="https://benchmarksgame-team.pages.debian.net/benchmarksgame/why-measure-toy-benchmark-programs.html" target="_blank" rel="noopener">4</a>]) to be misleading.</p>
-<p>As such, this is <strong>not</strong> a performance comparison of any concrete technique. The sole purpose of the benchmark is to put the <strong>end performance</strong> of LJR’s VM within the context of the existing implementations, to give a rough sense on the quality of the VM one can get from Deegen.</p>
-<p>TODO</p>
-<h4 id="Call-IC-Performance-Retrospective">Call IC Performance Retrospective</h4>
-<p>TODO</p>
+<p>In this section, we will analyze the performance of <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">LuaJIT Remake</a> (LJR)'s baseline JIT on 44 synthetic benchmarks from <a href="https://github.com/smarr/are-we-fast-yet" target="_blank" rel="noopener">Are-we-fast-yet</a>, <a href="https://benchmarksgame-team.pages.debian.net/benchmarksgame/" target="_blank" rel="noopener">CLBG</a>, <a href="https://github.com/LuaJIT/LuaJIT-test-cleanup/tree/master/bench" target="_blank" rel="noopener">LuaJIT Benchmarks</a> and <a href="https://github.com/gligneul/Lua-Benchmarks" target="_blank" rel="noopener">Lua Benchmarks</a>.</p>
+<p>Disclaimer: synthetic benchmarks are well-known to be misleading and unable to reflect real workloads (see [<a href="https://blog.mozilla.org/nnethercote/2014/06/16/a-browser-benchmarking-manifesto/" target="_blank" rel="noopener">1</a>,<a href="https://v8.dev/blog/retiring-octane" target="_blank" rel="noopener">2</a>,<a href="https://www.microsoft.com/en-us/research/publication/jsmeter-characterizing-real-world-behavior-of-javascript-programs/" target="_blank" rel="noopener">3</a>,<a href="https://benchmarksgame-team.pages.debian.net/benchmarksgame/why-measure-toy-benchmark-programs.html" target="_blank" rel="noopener">4</a>]). The sole purpose of this section is to put our results within the context of the existing works, to give a <em>rough sense</em> on the performance of our baseline JIT.</p>
+<h4 id="Compilation-Throughput">Compilation Throughput</h4>
+<p>The top priority of a baseline JIT is to generate machine code as fast as possible. Therefore, our first evaluation is the compilation throughput.</p>
+<p>We measured the compilation throughput of our baseline JIT by timing the main compilation function, which performs the end-to-end work of compiling a input Lua bytecode stream to machine code. We also recorded the total number of Lua bytecodes processed by the baseline JIT, and the total size of the generated machine code.</p>
+<p>The average result over all 44 benchmarks is as follows:</p>
+<ul>
+<li>In terms of Lua bytecodes processed per second, LJR’s baseline JIT can compile 19.1 million Lua bytecodes per second.</li>
+<li>In terms of machine code generated per second, LJR’s baseline JIT can generate 1.62GB of machine code per second.</li>
+</ul>
+<p>To demonstrate what 19.1 million Lua bytecodes means, the 44 Lua benchmark programs (254KB total) contains 17197 Lua bytecodes in total. So our baseline JIT generated machine code for all 44 benchmarks in less than one millisecond total.</p>
+<p>As such, we claim that the compilation throughput of our baseline JIT is extremely fast, to the point that the start delay can be considered negligible<sup class="footnote-ref"><a href="#fn18" id="fnref18">[18]</a></sup>.</p>
+<h4 id="Generated-Code-Performance">Generated Code Performance</h4>
+<p>While the baseline JIT is designed to generate code fast, generating fast code is still a second priority.</p>
+<p>In this section, we will evaluate the execution performance of the machine code generated by LJR’s baseline JIT by comparing with LuaJIT and PUC Lua.</p>
+<p>LJR and LuaJIT have drastically different high-level architecture, mid-level design and low-level implementation choices. For the most obvious part, a baseline JIT performs few optimizations <em>by design</em>, while the tracing JIT in LuaJIT does a lot of optimizations. Therefore, the sole purpose of the benchmark is to put the end performance of LJR’s baseline JIT within the context of the existing works, as shown in the figure below:</p>
+<p><img src="/images/2023-05-12/perf-numbers.png" alt="Performance comparison of LJR's baseline JIT, LuaJIT's tracing JIT and PUC Lua"></p>
+<p>As one can see, LuaJIT’s optimizing tracing JIT generally works better than our baseline JIT, which is no surprise.</p>
+<p>However, it’s worth noting that with IC as the only high-level optimization, we are already outperforming LuaJIT on 13 of the 44 benchmarks. On geometric average, we are about 34% slower than LuaJIT, and 4.6x faster than PUC Lua.</p>
+<p>In my opinion, it is fair to say that Deegen is now on a very stable ground. With its excellent interpreter and baseline JIT that can already achieve pretty good execution performance at a negligble startup delay, the optimizing JIT (to come in the future) would have much less pressure in doing expensive optimizations.</p>
 <h3 id="Conclusion-Thoughts-and-Future-Works">Conclusion Thoughts and Future Works</h3>
-<p>TODO</p>
+<p>This post demonstrated the second phase of the Deegen project – to build a high-performance baseline JIT compiler automatically from the bytecode semantic.</p>
+<p>Of course, this is far from the end. Our next step is to automatically generate an optimizing compiler, which will likely follow the design of JavaScriptCore’s DFG lightweight JIT compiler. If you have any comments, suggestions or thoughts, please do not hesitate to <a href="https://sillycross.github.io/about/">shoot me an email</a> :)</p>
 <h4 id="Acknowledgements">Acknowledgements</h4>
 <p>I thank <a href="https://fredrikbk.com/" target="_blank" rel="noopener">Fredrik Kjolstad</a> and <a href="https://saambarati.org/" target="_blank" rel="noopener">Saam Barati</a> for their comments and discussions on the draft version of this post. Fredrik also did the image editing work for the <code>Add</code> bytecode figure.</p>
 <hr>
@@ -498,9 +551,13 @@
 </li>
 <li id="fn14" class="footnote-item"><p>Under small code model, and not considering complications like position-independent code (PIC) and position-independent executable (PIE). <a href="#fnref14" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn15" class="footnote-item"><p>This is in fact an exaggregated statement. Hidden class <em>without</em> inline caching is much slower than a naive implementation (i.e., no hidden class at all). Therefore, if one were to actually seriously implement a baseline JIT without inline caching, he/she wouldn’t employ hidden class either. In that case, the end result is definitely going to be <em>more than</em> 20% faster than interpreter with inline caching. <a href="#fnref15" class="footnote-backref">↩︎</a></p>
+<li id="fn15" class="footnote-item"><p>This is in fact an exaggregated statement. Hidden class <em>without</em> inline caching is much slower than a naive implementation (i.e., no hidden class at all). Therefore, if one were to actually seriously implement a baseline JIT without inline caching, he/she wouldn’t employ hidden class either. So IC is only responsible for a portion of the “&gt;100% speedup on IC-intensive benchmarks”: the rest are the slowdown from the overhead of hidden class that could be avoided. <a href="#fnref15" class="footnote-backref">↩︎</a></p>
 </li>
-<li id="fn16" class="footnote-item"><p>Note that the JIT code for a bytecode may consist of multiple stencils, for example, a <code>Call</code> needs both the main logic and the return continuation. Clearly, the jump-to-fallthrough transform is only valid for the last instruction of the last stencil for the bytecode. <a href="#fnref16" class="footnote-backref">↩︎</a></p>
+<li id="fn16" class="footnote-item"><p>One jump is clearly saved by not branching to the outlined JIT stub. If the IC happens to fallthrough to the logic directly after the SMC region (which is quite common), an additional jump can be saved. <a href="#fnref16" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn17" class="footnote-item"><p>Note that the JIT code for a bytecode may consist of multiple stencils, for example, a <code>Call</code> needs both the main logic and the return continuation. Clearly, the jump-to-fallthrough transform is only valid for the last instruction of the last stencil for the bytecode. <a href="#fnref17" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn18" class="footnote-item"><p>However, note that the memory overhead is not negligble at all: each Lua bytecode (which is usually a few bytes) expands to an average of 91 bytes of machine code in baseline JIT. This is why even with a baseline JIT, we still want programs to start executing in the interpreter. <a href="#fnref18" class="footnote-backref">↩︎</a></p>
 </li>
 </ol>
 </section>
@@ -515,7 +572,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/draft2/index.html" data-id="clhgwnjun000jbmosg4ql42e1" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="clhkntog3000jdsp0gfzt5sil" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -526,6 +583,18 @@
   </div>
   
     
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="../../../../2022/11/22/2022-11-22/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">Building the fastest Lua interpreter.. automatically!</span>
+    </a>
+  </li>
+  
+  
+</ul>
+
 
   
 </article>
@@ -547,7 +616,7 @@
   
   <div class="sidebar-module">
     <h4>Archives</h4>
-    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2023/">2023</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../../../../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
   </div>
 
 
@@ -558,23 +627,23 @@
     <ul class="sidebar-module-list-recent-posts">
       
         <li>
-          <a href="../2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
+          <a href="">Building a baseline JIT for Lua automatically</a>
         </li>
       
         <li>
-          <a href="../2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+          <a href="../../../../2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
         </li>
       
         <li>
-          <a href="../2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
+          <a href="../../../../2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
         </li>
       
         <li>
-          <a href="../2022/06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
+          <a href="../../../../2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
         </li>
       
         <li>
-          <a href="../2022/06/02/2022-06-02/">Understanding GC in JSC From Scratch</a>
+          <a href="../../../../2022/06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
         </li>
       
     </ul>
@@ -599,20 +668,20 @@
 
 <!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
 
-<script src="../js/bootstrap/bootstrap.min.js"></script>
+<script src="../../../../js/bootstrap/bootstrap.min.js"></script>
 
 
 
   
-<link rel="stylesheet" href="../fancybox/jquery.fancybox.css">
+<link rel="stylesheet" href="../../../../fancybox/jquery.fancybox.css">
 
   
-<script src="../fancybox/jquery.fancybox.pack.js"></script>
+<script src="../../../../fancybox/jquery.fancybox.pack.js"></script>
 
 
 
 
-<script src="../js/script.js"></script>
+<script src="../../../../js/script.js"></script>
 
 
 <script type="text/x-mathjax-config">
