@@ -104,6 +104,97 @@
         <div class="col-sm-8 blog-main">
           
   
+    <article id="post-2023-06-11" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="2023/06/11/2023-06-11/">Debugging a Bit-Flip Error</a>
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="2023/06/11/2023-06-11/" class="article-date"><time datetime="2023-06-11T00:00:00.000Z" itemprop="datePublished">2023-06-11</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Some day last week, I was writing code for <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">my research project</a> as usual.</p>
+<p>I made some innocent code changes, then the build failed, with a weird linker error <code>reloc has bad offset 8585654</code> inside some debug info section.</p>
+<p>I’ve never hit such an error before, and Google gives no useful results either. The error clearly looks like a toolchain bug. So I didn’t think too much, cleared <code>ccache</code>, and ran the build again. This time, the build finished without problem.</p>
+<p>Then a few days later, my code got a weird failure while running a benchmark. All the tests were passing (which also includes that benchmark on a smaller dataset), but on the real benchmark dataset the code failed.</p>
+<p>I rolled back a few git commits, but the failure persists. Finally, I rolled back to a known “good” commit where I have ran the benchmark with no problem in the past. And the benchmark is now failing.</p>
+<p>Now it is clear that the failure is caused by a configuration issue. On closer look, it turns out that the benchmark reads from a 50MB data file <code>FASTA_5000000</code>. The file is not tracked by <code>git</code> due to its size, and the benchmark script will generate the file if it does not exist.</p>
+<p>I happen to have a copy of this file in another folder, so I ran <code>diff</code> on the two files.</p>
+<p>To my surprise, <code>diff</code> found a difference! Specifically, exactly one byte of the two ~50MB files is different. The byte went from <code>0x41</code> (the letter <code>A</code>) to <code>0xc1</code>, i.e., its 7-th bit is flipped.</p>
+<p>Of course, the file is never modified since its creation many months ago. And given that exactly one bit was changed, my first thought is the <a href="https://www.johndcook.com/blog/2019/05/20/cosmic-rays-flipping-bits/" target="_blank" rel="noopener">urban legend</a> that a cosmic ray striked my electronic and caused the bit-flip.</p>
+<h4 id="Checksum-Revealed-More-Errors">Checksum Revealed More Errors</h4>
+<p>I’m not a fan of urban legends, but having witnessed such a weird bug myself, I decided to take preventative measures. I decided to migrate my disk to <a href="https://en.wikipedia.org/wiki/Btrfs" target="_blank" rel="noopener">Btrfs</a>, a file system that (among other things) provides built-in checksum checks for all data and metadata. This way, any corruption should be automatically detected.</p>
+<p>Then I discovered the situation isn’t that simple.</p>
+<p>I used <code>btrfs-convert</code> to convert my filesystem from <code>ext4</code> to <code>btrfs</code>. By default, it creates a snapshot file named <code>image</code> that allows one to rollback to <code>ext4</code>. After the conversion finished, for sanity, I ran <code>btrfs scrub</code> to scan for disk errors. To my surprise, <code>btrfs scrub</code> immediately reported 288 corruptions in the <code>image</code> file!</p>
+<p>It is clear that something is seriously wrong. Maybe I got a defective SSD that is already at its end of life after only 1 year of use? So I checked my SSD’s <code>smartctl</code> log, but saw no errors.</p>
+<p>Of course, it could be Western Digital didn’t faithfully implement their SSD error logging. But I suddenly realized another possibility.</p>
+<p>All the corruptions I observed are disk-related (the <code>ccache</code>, the benchmark data, the <code>image</code> file), but the faulty hardware doesn’t have to be the disk. The corrupted benchmark data is especially misleading: I observed a flipped bit with my own eye. But even that could be explained by a RAM corruption: Linux has a page cache that caches disk contents. If the page cache is corrupted, then even though the disk file is intact, all the reads will see the corrupted contents until the corrupted page is evicted.</p>
+<p>So before I conclude that WD is not trustworthy and go buy a new SSD from another manufacturer, I need to make sure that the problem is indeed my SSD.</p>
+<p>So I looked into the kernel <code>dmesg</code> log just to see if there’s anything interesting. Luckily, I soon noticed another unusual error, which complains some page table entry is broken for some process. This is a corruption that cannot result from a user-level software bug (as the page table is managed by the kernel), and it has nothing to do with the disk (unless the page table is swapped out, which is unlikely). The RAM is quickly becoming the top suspect.</p>
+<h4 id="Hunting-down-the-Faulty-RAM-Chip">Hunting down the Faulty RAM Chip</h4>
+<p>I ran <code>memtester</code> to test my RAM, but no errors are found. And given that I can just use my laptop as usual, even if there were a hardware glitch, it’s likely that the glitch could only be triggered very rarely in complex conditions.</p>
+<p>So to pinpoint the faulty component, I need a way to reliably reproduce the bug. <code>btrfs-convert</code> can, but I can’t run the command repeatedly (and at the risk of my file system).</p>
+<p>Fortunately I soon found such a reproduce. I was trying a tool called <a href="https://github.com/markfasheh/duperemove" target="_blank" rel="noopener">duperemove</a>, as recommended by the Btrfs guide. The tool needs to scan the whole filesystem. As the tool was running, I soon noticed file corruption errors popping up in <code>dmesg</code>:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">BTRFS warning (device nvme0n1p2): csum failed root 5 ino 73795687 off 19005440 csum 0xbd4923a63ec89b42 expected csum 0x6ee2d71bfaa19559 mirror 1</span><br><span class="line">BTRFS error (device nvme0n1p2): bdev &#x2F;dev&#x2F;nvme0n1p2 errs: wr 0, rd 0, flush 0, corrupt 6, gen 0</span><br></pre></td></tr></table></figure>
+<p>It turns out that if I run <code>duperemove</code> in a dead loop, those errors show up sparsely, from once per few minutes to once per couple of hours.</p>
+<p>Furthermore, the files on the disk are actually <em>not</em> corrupted. The <code>ino</code> in the error messages can be backtracked to the file path using <code>btrfs inspect-internal inode-resolve</code>, and there’s no issue to read the file contents again (note that Btrfs cannot fix corruption as my disk is not <code>RAID</code>ed, so if the file is actually corrupted, every read will fail). This is a strong evidence that my SSD is innocent: the faulty hardware is the RAM.</p>
+<p>Fortunately, I have a spare old laptop, so I replaced the RAM using the one from the old laptop. After that, <code>duperemove</code> no longer results in <code>dmesg</code> errors.</p>
+<p>To be extra sure, since my new laptop has two RAM chips, I also tried to only install one of them. As expected, <code>duperemove</code> triggers error when one of the two RAM chips is installed, but not the other one.</p>
+<p>This clearly demonstrates that the faulty component is one of my two RAM chips:</p>
+<p><img src="/images/2023-06-11/faulty_ram_chip.jpeg" alt="The faulty RAM chip :)"></p>
+<p>But I’m replacing both chips anyway, as I don’t trust Corsair anymore – to be clear, the chip has served 5 years, so it’s hard to say that their quality is low. But as you can imagine, after all of these, I just don’t want to take any more risks.</p>
+<h4 id="Takeaways">Takeaways</h4>
+<p>We all know faulty hardwares are real: after all that’s why server RAMs have ECC and disks are RAIDed. Even CPUs can malfunction, as shown by <a href="https://sigops.org/s/conferences/hotos/2021/papers/hotos21-s01-hochschild.pdf" target="_blank" rel="noopener">Google’s paper</a>.</p>
+<p>But it feels completely different to experience a faulty hardware first-hand. For example, I used to believe that if my RAM became faulty, my computer won’t even boot, so why worry about ECC? But I have totally changed my mind now.</p>
+<p>To summarize:</p>
+<ol>
+<li>Hardwares are not always reliable.</li>
+<li>Hardwares can fail in subtle ways: my faulty RAM worked just fine for normal daily usage, but in complex workloads (compilation, benchmarking, file system convertion) it silently failed and caused data corruptions.</li>
+<li>Error detection and recovering techniques like checksum, RAID and ECC are not just for the paranoids: they are there for good reasons.</li>
+</ol>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="https://sillycross.github.io/2023/06/11/2023-06-11/" data-id="clisj1kk0000fe9ov34kve9jz" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-2023-05-12" class="article article-type-post" itemscope itemprop="blogPost">
 
   <header class="article-header">
@@ -552,7 +643,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="clhkps16w000iekox6t4kaif4" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="clisj1kk8000ke9ovck6r1p4v" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -715,7 +806,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clhkps16r000gekoxbpqk6vbp" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clisj1kjz000ee9ov841cdkct" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -804,7 +895,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clhkps16p000eekoxfypl8umz" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clisj1kjy000de9ovbr168f26" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -923,7 +1014,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clhkps16p000fekoxcyvp5y50" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clisj1kjw000ce9ov0qh41pol" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1050,7 +1141,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clhkps16o000dekoxbrysde7l" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clisj1kjv000be9ov2mx48l1o" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1748,7 +1839,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clhkps17d000jekoxd28u88p7" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clisj1kk8000je9ovgsin2izm" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1828,7 +1919,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clhkps16m000cekox4wweagqe" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clisj1kju000ae9ovail5g0hv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1953,7 +2044,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clhkps16l000bekoxaskrf7co" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clisj1kk2000ie9ov12r03fb3" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -2065,87 +2156,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clhkps16s000hekoxe9co7tbd" class="article-share-link">
-        <i class="fa fa-share"></i> Share
-      </a>
-    -->
-      
-      
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-2022-04-01" class="article article-type-post" itemscope itemprop="blogPost">
-
-  <header class="article-header">
-    
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="2022/04/01/2022-04-01/">From X Macro to FOR_EACH to Cartesian Product Enumeration with C Macro</a>
-    </h1>
-  
-
-
-  </header>
-
-  <div class="article-meta">
-    <div class="article-datetime">
-  <a href="2022/04/01/2022-04-01/" class="article-date"><time datetime="2022-04-01T00:00:00.000Z" itemprop="datePublished">2022-04-01</time></a>
-</div>
-
-    
-    
-
-  </div>
-  <div class="article-inner">
-
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>Quite a while ago I was implementing an interpreter. A common task in the interpreter is to select the correct interpreter function based on the type of the input. Let’s say we want to implement an addition. We might end up with something like below:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(T* input1, T* input2, T* output)</span> </span>&#123;</span><br><span class="line">    *output = *input1 + *input2;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>to implement the operation. At runtime, we want to dispatch to the right function base on the type of the operands. A natural way to do this is to have a static array holding the mapping from the operand type to the function pointer, similar to below:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">enum</span> Type &#123; Int32, Int64, Double, ... &#125;;</span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123;</span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">int32_t</span>&gt;, </span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">int64_t</span>&gt;, </span><br><span class="line">    (<span class="keyword">void</span>*)Add&lt;<span class="keyword">double_t</span>&gt;, ...</span><br><span class="line">&#125;; </span><br></pre></td></tr></table></figure>
-<p>so at runtime we can just read <code>x_addOpPtr[operandType]</code> to obtain the function pointer we want to call.</p>
-<h4 id="The-X-Macro">The X Macro</h4>
-<p>Although the code above can work, it is clearly too error prone. If we accidentally made a mistake in the order of the list, we are screwed. A better way is the <a href="https://en.wikipedia.org/wiki/X_Macro" target="_blank" rel="noopener">X Macro</a> pattern. We define a “X macro” for all the types:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOR_EACH_TYPE(X) \</span></span><br><span class="line">    X(Int32, <span class="keyword">int32_t</span>)    \</span><br><span class="line">    X(Int64, <span class="keyword">int64_t</span>)    \</span><br><span class="line">    X(Double, <span class="keyword">double_t</span>) ...</span><br></pre></td></tr></table></figure>
-<p>Then, by defining what <code>X(EnumType, CppType)</code> expands to, we can create logic based on our needs. For example, the following code would reproduce the <code>x_addOpPtr</code> array we want:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(EnumType, CppType) (void*)Add<span class="meta-string">&lt;CppType&gt; , </span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_TYPE(X) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X	<span class="comment">// hygiene </span></span></span><br></pre></td></tr></table></figure>
-<p>Note that the final <code>nullptr</code> is needed because our expansion <code>(void*)Add&lt;CppType&gt;,</code> would generate an extra comma in the end.</p>
-<h4 id="The-New-Challenge">The New Challenge</h4>
-<p>X Macro solved the above problem, but what if we want to handle, say, a type cast opcode?</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Src, <span class="keyword">typename</span> Dst&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Cast</span><span class="params">(Src* input, Dst* output)</span> </span>&#123;</span><br><span class="line">    *output = <span class="keyword">static_cast</span>&lt;Dst&gt;(*input);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>Unlike the addition operator, now we have two types <code>Src</code> and <code>Dst</code> to enumerate on, so we have to generate a two-dimensional array. While X Macro can easily iterate through one list and perform action on every item, it cannot iterate through the <strong>Cartesian product of two lists</strong>. A worse solution, is of course, to manually define a list containing all the <code>&lt;Src, Dst&gt;</code> pairs, so we can do X macro again. But what if we want to do a three-dimensional Cartesian product in the future?</p>
-<p>After some fruitless Googling and home-making attempts to build a “two dimensional X Macro”, I eventually gave up and switched to <a href="https://github.com/sillycross/PochiVM/blob/master/pochivm/ast_type_helper.h#L635" target="_blank" rel="noopener">an ugly solution</a>. Instead of generating a clean static array, we generate a tree of templated dispatching functions. The function at the <code>i-th</code> level use a dispatch array (built by X macro) to dispatch to the next level’s selector function based on the <code>i-th</code> parameter type. We get the function pointer when we reach the leaf. While this approach works, no doubt it is very ugly, and probably also less performant (I didn’t check if the C++ compiler were able to optimize away all the terrible things).</p>
-<h4 id="The-FOR-EACH-Macro">The FOR_EACH Macro</h4>
-<p>I used to believe my ugly solution is as good as one can get without resorting to manually enumerating the Cartesian product. However, today I learnt <a href="https://www.scs.stanford.edu/~dm/blog/va-opt.html" target="_blank" rel="noopener">an interesting approach</a> from David Mazieres, which he calls the <code>FOR_EACH</code> macro.</p>
-<p>The semantics of the <code>FOR_EACH</code> macro is pretty clear. Taking a macro <code>X</code> (similar to the <code>X</code> in X Macro) and a comma-separated list of elements <code>e1, e2, ... , en</code>, the <code>FOR_EACH</code> macro invokes <code>X</code> on each <code>e</code> in the list. For example, the addition example would look like:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Note that the 'X' is gone, and the list is comma-separated</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> TYPE_LIST        \</span></span><br><span class="line">    (Int32, <span class="keyword">int32_t</span>) ,   \</span><br><span class="line">    (Int64, <span class="keyword">int64_t</span>) ,   \</span><br><span class="line">    (Double, <span class="keyword">double_t</span>) ...  </span><br><span class="line">    </span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e) (void*)Add<span class="meta-string">&lt;TUPLE_GET_2(e)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_addOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH(X, TYPE_LIST) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
-<p>The most important difference between <code>FOR_EACH</code> macro and X Macro is that the <code>FOR_EACH</code> list definition doesn’t take <code>X</code>. Unlike the X Macro, where the macro to call on each element is hardcoded to only pass the element itself, the <code>FOR_EACH</code> macro decoupled “the element to be processed” and “the macro processing the element”. This removes the biggest blocker to implement a macro that can enumerate through Cartesian product of multiple lists.</p>
-<p>The core of the trick which allows <code>FOR_EACH</code>’s list definition to get rid of the <code>X</code> lies in the <a href="https://en.cppreference.com/w/cpp/preprocessor/replace#Function-like_macros" target="_blank" rel="noopener">C++20 new feature</a> <code>__VA_OPT__</code>. David Mazieres’ original article is already a good explanation on how the <code>FOR_EACH</code> macro works so I won’t parrot it again. With the main blocker removed, after only a few hours of work, I was able to successfully extend <code>FOR_EACH</code> to support enumerating through the Cartesian product of multiple lists. (By the way, even after implementing it, I still have very little idea on how the C preprocessor works, but <code>clang++ -E</code> is enough to trial-and-error into a working solution).</p>
-<h4 id="The-FOR-EACH-CARTESIAN-PRODUCT-Macro">The FOR_EACH_CARTESIAN_PRODUCT Macro</h4>
-<p>I call my macro <code>FOR_EACH_CARTESIAN_PRODUCT</code>. As the name suggests, it takes a macro <code>X</code> and one or more lists <code>(L1), ..., (Ln)</code>. Then for each <code>(e1, ..., en)</code> in the Cartesian product <code>L1 x ... x Ln</code> , the macro <code>X(e1, ..., en)</code> is invoked. The elements in the Cartesian product are enumerated in lexical order.</p>
-<p>For example, for the type-casting example above, the below code would construct our desired two-dimensional dispatch array:</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> X(e1, e2) (void*)Cast<span class="meta-string">&lt;TUPLE_GET_2(e1), TUPLE_GET_2(e2)&gt; ,</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span>* <span class="keyword">const</span> x_castOpPtr[] = &#123; </span><br><span class="line">    FOR_EACH_CARTESIAN_PRODUCT(X, (TYPE_LIST), (TYPE_LIST)) </span><br><span class="line">    <span class="literal">nullptr</span> </span><br><span class="line">&#125;;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> X</span></span><br></pre></td></tr></table></figure>
-<p>Note that the generated array is one-dimensional, but indexing it is pretty simple: <code>x_castOpPtr[opType1 * numTypes + opType2]</code> will give us the desired function pointer for <code>Src=opType1</code> and <code>Dst=opType2</code>.</p>
-<p>The code, which contains both the implementation for <code>FOR_EACH_CARTESIAN_PRODUCT</code> and the above examples <a href="https://sillycross.github.io/assets/2022-04-01/for-each-cartesian-product-macro.cpp.txt">can be found here</a>. The code is in public domain so feel free to use.</p>
-<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
-      
-    </div>
-
-    
-      
-
-    
-
-    <footer class="article-footer">
-    <!--
-      <a data-url="https://sillycross.github.io/2022/04/01/2022-04-01/" data-id="clhkps16i0009ekoxem071si0" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clisj1kjt0009e9ov7kbkh1wp" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -2182,7 +2193,7 @@ Do some check to t2 and push it to queue<br>
   
   <div class="sidebar-module">
     <h4>Archives</h4>
-    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2023/">2023</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2023/">2023</a><span class="sidebar-module-list-count">2</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
   </div>
 
 
@@ -2191,6 +2202,10 @@ Do some check to t2 and push it to queue<br>
   <div class="sidebar-module">
     <h4>Recents</h4>
     <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="2023/06/11/2023-06-11/">Debugging a Bit-Flip Error</a>
+        </li>
       
         <li>
           <a href="2023/05/12/2023-05-12/">Building a baseline JIT for Lua automatically</a>
@@ -2206,10 +2221,6 @@ Do some check to t2 and push it to queue<br>
       
         <li>
           <a href="2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
-        </li>
-      
-        <li>
-          <a href="2022/06/11/2022-06-11/">Bizarre Performance Characteristics of Alder Lake CPU</a>
         </li>
       
     </ul>
