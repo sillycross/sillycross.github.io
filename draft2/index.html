@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><meta charset="utf-8">
+  
+  <title>Progress on Deegen&#39;s 3rd-tier Optimizing JIT | </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="This is a draft, please do not publicly distribute the URL as it will be invalidated.  This is the Part 3 of a series. Feel free to read the prequels for more context:Building the fastest Lua interpre">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Progress on Deegen&#39;s 3rd-tier Optimizing JIT">
+<meta property="og:url" content="https://sillycross.github.io/draft2/index.html">
+<meta property="og:site_name">
+<meta property="og:description" content="This is a draft, please do not publicly distribute the URL as it will be invalidated.  This is the Part 3 of a series. Feel free to read the prequels for more context:Building the fastest Lua interpre">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://sillycross.github.io/images/2025-02-27/deegen-goal.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2025-02-27/dfg-pipeline.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2025-02-27/dfg-pass.png">
+<meta property="og:image" content="https://sillycross.github.io/images/2025-02-27/dfg-builtin-nodes.png">
+<meta property="article:published_time" content="2025-02-27T00:00:00.000Z">
+<meta property="article:modified_time" content="2025-02-23T01:09:58.058Z">
+<meta property="article:author" content="Haoran Xu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://sillycross.github.io/images/2025-02-27/deegen-goal.png">
+  
+    <link rel="alternate" href="../atom.xml" title="" type="application/atom+xml">
+  
+  
+  
+    <!--<link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">-->
+    <!--
+<link rel="stylesheet" href="../css/source_code_pro.css">
+-->
+    <link rel="stylesheet" href="/css/source_code_pro.css?ver=20230504">
+  
+
+  <!--<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">-->
+<!--  
+<link rel="stylesheet" href="../css/bootstrap/bootstrap.min.css">
+ -->
+
+<link rel="stylesheet" href="/css/bootstrap/bootstrap.min.css?ver=20230504">
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+<link rel="stylesheet" href="/css/styles.css?ver=20230504">
+
+<!--  
+<link rel="stylesheet" href="../css/styles.css">
+ -->
+
+  
+
+  
+  <!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>-->
+  
+<script src="../js/jquery.min.js"></script>
+
+
+<meta name="generator" content="Hexo 4.2.1"><!-- hexo-inject:begin --><!-- hexo-inject:end --></head>
+
+<body>
+  <!-- hexo-inject:begin --><!-- hexo-inject:end --><nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="../index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="../archives/">Archives</a></li>
+        
+          <li><a class=""
+                 href="../about/">About</a></li>
+        
+          <li><a class=""
+                 href="../cnblog/">Chinese Blog</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title"></h1>
+  
+    <p class="blog-description">「こんなきれいな星も、やっぱりここまで来てから、見れたのだと思うから。だから・・もっと遠くへ・・」</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="page-" class="article article-type-page" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      Progress on Deegen&#39;s 3rd-tier Optimizing JIT
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="" class="article-date"><time datetime="2025-02-27T00:00:00.000Z" itemprop="datePublished">2025-02-27</time></a>
+</div>
+
+    
+    
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p><text style="color:red;">This is a draft, please do not publicly distribute the URL as it will be invalidated.</text></p>
+<blockquote>
+<p><span style="font-size:15px;">This is the Part 3 of a series. Feel free to read the prequels for more context:<ul style="margin-top:-13px; margin-bottom:-12px; font-size:15px;"><li><a href="/2022/11/22/2022-11-22/">Building the fastest Lua interpreter automatically</a></li><li><a href="/2023/05/12/2023-05-12/">Building a baseline JIT for Lua automatically</a></li></ul></span></p>
+</blockquote>
+<p>As some of you might know, I have been working on the Deegen research project for 3+ years now. In short, the goal of Deegen is to automatically generate a high-performance VM with a multi-tier JIT for any dynamic language.</p>
+<p>For those unfamiliar with the topic, a high-performance dynamic language VM, e.g., the JavaScript VMs in modern browsers, needs multiple execution tiers:</p>
+<ul>
+<li>A good interpreter is needed for run-once / rarely-executed code: without it, the memory usage would rocket, as JIT code is way larger than bytecodes.</li>
+<li>A good baseline JIT is needed to quickly compile hotter code into JIT code, and to collect profiles for the speculative optimizing JIT. Without it, large real-world applications will <a href="https://ieeexplore.ieee.org/document/9370314" target="_blank" rel="noopener">suffer a significant penalty</a>.</li>
+<li>For the program hotspots, the speculative optimizing JIT kicks in to generate highly-optimized code (at the cost of a longer compilation time), so the long-running bottlenecks can enjoy a high peak throughput.</li>
+</ul>
+<p>Traditionally, it takes a huge amount of time, money, and expertise to develop such a state-of-the-art VM. But what we want is well-defined: a VM that implements the semantics of a dynamic language. So why can’t we take in a description of the language, and automatically generate the VM?</p>
+<p><img src="/images/2025-02-27/deegen-goal.png" alt="Deegen: automatically generate a high-performance VM!"></p>
+<p>This is the idea behind Deegen, and we can already automatically generate a state-of-the-art <a href="/2022/11/22/2022-11-22/">interpreter</a> and <a href="/2023/05/12/2023-05-12/">baseline JIT</a>, as covered in prior posts.</p>
+<p>I have since been working on automatically generating the speculative optimizing JIT tier, which I named <em>DFG</em>. As the name suggests, it is heavily inspired by JavaScriptCore (the JavaScript VM in Safari)'s DFG optimizing JIT, except that Deegen’s DFG is automatically generated by Deegen and not bound to target a specific language<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>.</p>
+<p>This has been a lot of work, but I’ve finally reached a MVP: everything except the optimization passes have been implemented and is working end-to-end.</p>
+<p><img src="/images/2025-02-27/dfg-pipeline.png" alt="The DFG compilation pipeline as of now."></p>
+<p>Wait, an optimizing JIT <em>without</em> the optimization passes? This might sound bizzare, but as we will see, the hardest part is not the passes, but the language-neutral compiler infrastructure (IR, frontend, backend) that supports them.</p>
+<h3 id="Generate-the-IR-Definition">Generate the IR Definition</h3>
+<p>Every optimizing compiler needs an intermediate representation (IR) to logically represent the program it is working on. But recall that the goal of Deegen is to generate a VM for <em>any</em> dynamic language, so we cannot, say, hardcode an IR node that represents a JavaScript <code>Add</code> operator.</p>
+<p>Moreover, we must use a high-level IR that is roughly at the same (or slightly lower) abstraction level of the bytecodes. We cannot use a low-level IR like the LLVM IR, as the high-level information needed for critical dynamic language optimizations (e.g., type speculation, inline caching) are irrecoverably lost at the LLVM IR level. Another reason is that a lower-level IR results in more IR nodes, thus higher compilation time: a serious issue for a JIT compiler.</p>
+<p>Deegen’s solution is to <em>generate</em> the <em>definition</em> of the IR. Specifically, DFG (our optimizing JIT compiler) has two kinds of IR nodes:</p>
+<ul>
+<li><em>Built-in nodes</em>: they are hard-coded language-neutral basic operations (e.g., load a value from stack) that DFG directly understands.</li>
+<li><em>Guest language nodes</em>: they correspond directly to the guest language bytecodes (but in the future, it may also correspond to a sub-component of a guest language bytecode). At build time, Deegen statically generate all needed information about these guest language nodes from their execution semantics, so at runtime, DFG can abstractly reason about their behaviors, as shown in the figure below.</li>
+</ul>
+<p><img src="/images/2025-02-27/dfg-pass.png" width=91% alt="How a typical pass works in DFG."></p>
+<p>This is best shown by an example on how we construct the DFG IR from the bytecode sequence. Let’s first make clear on some assumptions:</p>
+<ul>
+<li>Deegen assumes a register-machine model, so the stack frame is modelled as an array of slots, where each slot stores a boxed value.</li>
+<li>Each bytecode loads its operands (which are boxed values) from the stack frame, and stores its outputs back to the stack frame.</li>
+<li>The DFG IR is a Single Static Assignment (SSA) IR.</li>
+</ul>
+<p>So say, we have a Lua <code>Add</code> bytecode that takes two operands, and outputs one result. In the interpreter and baseline JIT, the bytecode will always load the two operands from the stack, does its job, and writes the result back to the stack.</p>
+<p>In an optimizing JIT, we clearly do not want to force every operation to load its operands from the stack: we want to register-allocate them. Thus, in DFG IR, we will have a guest language IR node named <code>Add</code> that has exactly the semantics of the <code>Add</code> bytecode, but the <code>Add</code> IR node takes two SSA values as inputs, and it outputs an SSA value.</p>
+<p>Note that DFG does not know the relation of <code>Add</code> and arithmetic addition<sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>: all it knows is that <code>Add</code> takes two values and outputs one (and this information is produced by Deegen from the bytecode specification of <code>Add</code>).</p>
+<p>Now, how could we feed the operands into <code>Add</code>? This is where the built-in nodes come in. The <code>GetLocal</code> built-in node loads the value of a stack slot, producing an SSA value. The <code>SetLocal</code> built-in node takes in an SSA value and a slot number, and writes the SSA value to the slot.</p>
+<p>As an example, the expression <code>a = a + b + a</code> in the following Lua snippet</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">local</span> a = ...</span><br><span class="line"><span class="keyword">local</span> b = ...</span><br><span class="line">a = a + b + a</span><br></pre></td></tr></table></figure>
+<p>will become a Lua bytecode sequence like</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- suppose 'a' is assigned slot 1 and 'b' is assigned slot 2 </span></span><br><span class="line">slot3 = Add(slot1, slot2)  <span class="comment">-- eval 'a + b', store to temp slot 3</span></span><br><span class="line">slot1 = Add(slot3, slot1)  <span class="comment">-- eval 'tmp + a', store to slot of a</span></span><br></pre></td></tr></table></figure>
+<p>The DFG frontend will translate each Lua <code>Add</code> bytecode to four DFG IR nodes:</p>
+<ul>
+<li>Two <code>GetLocal</code> (built-in node) to load the operands.</li>
+<li>One <code>Add</code> (guest language node) to execute the Lua <code>Add</code> semantics.</li>
+<li>One <code>SetLocal</code> (built-in node) to store the output back to stack.</li>
+</ul>
+<p>Thus, the bytecode sequence for <code>a = a + b + a</code> will translate to the following DFG IR sequence:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(slot1)  <span class="comment">-- slot3 = Add(slot1, slot2)</span></span><br><span class="line">%<span class="number">2</span> = GetLocal(slot2)  </span><br><span class="line">%<span class="number">3</span> = Add(%<span class="number">1</span>, %<span class="number">2</span>)       </span><br><span class="line">SetLocal(%<span class="number">3</span>, slot3)   </span><br><span class="line">%<span class="number">4</span> = GetLocal(slot3)  <span class="comment">-- slot1 = Add(slot3, slot1)</span></span><br><span class="line">%<span class="number">5</span> = GetLocal(slot1)  </span><br><span class="line">%<span class="number">6</span> = Add(%<span class="number">4</span>, %<span class="number">5</span>)       </span><br><span class="line">SetLocal(%<span class="number">6</span>, slot1)   </span><br></pre></td></tr></table></figure>
+<p>Since <code>GetLocal</code> and <code>SetLocal</code> are built-in nodes, DFG understands their exact semantics. Furthermore, <code>GetLocal</code> and <code>SetLocal</code> are in fact the only way to access the stack frame in DFG, so DFG can deduce that <code>%4</code> equals <code>%3</code> (store-load forwarding), <code>%5</code> equals <code>%1</code> (load-load forwarding), and <code>SetLocal(%3, slot3)</code> is a no-op since <code>slot3</code> is never read from later. This results in the following DFG IR sequence after simplification:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(slot1)  </span><br><span class="line">%<span class="number">2</span> = GetLocal(slot2)  </span><br><span class="line">%<span class="number">3</span> = Add(%<span class="number">1</span>, %<span class="number">2</span>)  </span><br><span class="line">%<span class="number">6</span> = Add(%<span class="number">3</span>, %<span class="number">1</span>)</span><br><span class="line">SetLocal(%<span class="number">6</span>, slot1)   <span class="comment">-- assuming someone reads slot1 later</span></span><br></pre></td></tr></table></figure>
+<p>One can easily imagine building a full SSA IR from there. However, we elected to use JavaScriptCore DFG’s block-local SSA IR approach: an SSA value can only be referenced within the basic block it is defined. So we will not further transform all <code>GetLocal</code> and <code>SetLocal</code> into Phi nodes, but this is not a design limitation.</p>
+<p>While the above example is conceptually straightforward, it demonstrates the key insight to DFG’s language-neutral IR:</p>
+<ul>
+<li>The guest language operations are represented by guest language nodes.</li>
+<li>At build time, Deegen statically reasons about the traits and behaviors of the guest language nodes using the bytecode declaration and execution semantics, and dump the information as data tables or code stubs (in this example, the inputs and outputs information of each bytecode).</li>
+<li>At runtime, DFG uses the Deegen-produced information to construct, analyze, transform the IR, and finally lowers it to machine code.</li>
+<li>Language-neutral built-in nodes are used to express key language-neutral concepts (e.g., the stack frame) for better optimizations.</li>
+</ul>
+<h3 id="Supporting-OSR-Exit">Supporting OSR Exit</h3>
+<p>A unique requirement (and big complexity) of a speculative optimizing JIT is that it must support OSR exit. Speculation is critical for performance, as once a speculation passes, the compiler is safe to optimize the rest of the function based on this assumption. As the cost of this powerful ability, however, whenever a speculation fails, the optimized code is no longer safe to execute (because the compiler have optimized the rest of the function based on a false assumption), and we must perform an OSR-exit: bail out from the optimized code, and jump into the lower tier (baseline JIT or interpreter) to continue executing the <em>rest</em> of the function.</p>
+<p>Thus, to support OSR exit, DFG must know how to transform the current function state back to the stack frames (the plural “frames” is intentional, since DFG may speculatively inline functions, and OSR exit may happen deep inside a stack of inlined calls) expected the lower tiers at any point a speculation is performed. And DFG must maintain this knowledge when performing any transformation to the IR.</p>
+<p>Clearly, the DFG IR needs a systematic mechanism to support OSR exit.</p>
+<p>The key insight to support OSR exit in DFG IR is that the initial DFG IR (generated by the DFG frontend) has exactly the same behavior of the original bytecode sequence: we always load the operands from the stack at the exact slots used by the interpreter, perform exactly the operation executed by the interpreter, then store results into the exact slots used by the interpreter. It is the later optimizations that made our behavior diverge from the interpreter (in order to run faster, of course).</p>
+<p>Therefore, if we record all the writes to the interpreter stack frames when we construct the initial DFG IR, we can later use these records to know what value is stored in each imaginary interpreter stack slot at each bytecode boundary (where we may do a speculation and trigger an OSR exit).</p>
+<p>In DFG, we use the built-in node <code>ShadowStore</code> to achieve this. It takes an SSA value <code>V</code> and an interpreter slot number <code>i</code>, and represents an imaginary store of value <code>V</code> into the interpreter slot <code>i</code> – the <code>ShadowStore</code> translates to no JIT code, but merely tells DFG that if an OSR exit happens since then, the interpreter slot <code>i</code> needs to have value <code>V</code>, so DFG must know where it can find <code>V</code> in its optimized function state (be it in a register, spilled on the stack, or in somewhere else) as long as the interpreter slot <code>i</code> is alive.</p>
+<p>We will again use the <code>a = a + b + a</code> example. The DFG frontend will now emit a <code>ShadowStore</code> before each <code>SetLocal</code>, so the initial DFG IR looks like below:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(loc1)  </span><br><span class="line">%<span class="number">2</span> = GetLocal(loc2)  </span><br><span class="line">%<span class="number">3</span> = Add(%<span class="number">1</span>, %<span class="number">2</span>)       </span><br><span class="line">ShadowStore(%<span class="number">3</span>, slot3) <span class="comment">-- this is new!</span></span><br><span class="line">SetLocal(%<span class="number">3</span>, loc3)   </span><br><span class="line">%<span class="number">4</span> = GetLocal(loc3) </span><br><span class="line">%<span class="number">5</span> = GetLocal(loc1)  </span><br><span class="line">%<span class="number">6</span> = Add(%<span class="number">4</span>, %<span class="number">5</span>)      </span><br><span class="line">ShadowStore(%<span class="number">6</span>, slot1) <span class="comment">-- this is new!</span></span><br><span class="line">SetLocal(%<span class="number">6</span>, loc1)   </span><br></pre></td></tr></table></figure>
+<p>Note that we have intentionally changed <code>GetLocal</code> and <code>SetLocal</code> to operate on <code>loc[N]</code> while <code>ShadowStore</code> on <code>slot[N]</code>, to highlight the fact that <code>GetLocal</code>/<code>SetLocal</code> operate on DFG stack frame locations, while <code>ShadowStore</code> operates on the imaginary interpreter stack frame. <code>loc1</code> does not need to be the same physical location as <code>slot1</code>: DFG is free to do any optimizations it wants, e.g., it may coalesce different <code>loc</code>s with non-overlapping live ranges to use one physical address.<br>
+We then apply the standard load/store simplication as before:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(loc1)  </span><br><span class="line">%<span class="number">2</span> = GetLocal(loc2)  </span><br><span class="line">%<span class="number">3</span> = Add(%<span class="number">1</span>, %<span class="number">2</span>)       </span><br><span class="line">ShadowStore(%<span class="number">3</span>, slot3) <span class="comment">-- this is new! </span></span><br><span class="line">%<span class="number">6</span> = Add(%<span class="number">3</span>, %<span class="number">1</span>)      </span><br><span class="line">ShadowStore(%<span class="number">6</span>, slot1) <span class="comment">-- this is new!</span></span><br><span class="line">SetLocal(%<span class="number">6</span>, loc1)   </span><br></pre></td></tr></table></figure>
+<p><code>ShadowStore</code> cannot be removed so they are left where they are. But keep in mind that <code>ShadowStore</code> translates to no JIT code – it merely serves as a metadata for Deegen to construct the OSR exit map.</p>
+<p>In the above example, if the <code>Add</code> in line 5 triggers an OSR exit, the <code>ShadowStore</code> in line 4 tells us that interpreter slot 3 needs to have SSA value <code>%3</code>. DFG will track where SSA value <code>%3</code> is at any moment (e.g., it may be born in register <code>R10</code> in line 3), and generate an OSR exit map containing such information, so that when an OSR exit happens, we know how to reconstruct the interpreter stack frames (e.g., <code>slot3</code> should contain what was in register <code>R10</code> at OSR exit) correspondingly.</p>
+<p>While the above example only has one basic block, the scheme naturally extends to work for general CFGs. Due to the block-local SSA design, DFG has a <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_osr_call_frame_basemap.h" target="_blank" rel="noopener">consistent mapping</a> from interpreter slots to DFG locals at the start of each basic block. That is, the value of interpreter slot <code>i</code> is consistenty stored in DFG local <code>D(i)</code> at the start of every basic block where it is alive, so if an OSR exit happened at the start of a basic block, we can recover each interpreter slot <code>i</code> by reading DFG local <code>D(i)</code>.</p>
+<p>Thus, all is left is to account for what happens to the interpreter slots inside a basic block. For convenience, let <code>A[i]</code> indicate how we should recover interpreter slot <code>i</code> from the DFG function state (e.g., in a register, in a stack location, or be a specific constant) at this moment. For each SSA value <code>V</code>, let <code>DLoc(V)</code> be where <code>V</code> is currently available in the DFG function state, and <code>ILocs(V)</code> be the list of interpreter slots are currently storing <code>V</code>. Then:</p>
+<ul>
+<li>After a <code>ShadowStore(V, slot_i)</code>, interpreter slot <code>i</code> should now recover to SSA value <code>V</code>. So <code>A[i]</code> should be updated to <code>DLocs(V)</code>.</li>
+<li>Whenever <code>DLoc(V)</code> is updated (e.g., when DFG spills SSA value <code>V</code> to a temporary location on the stack, or moves it to another register), for each <code>i</code> in <code>ILocs(V)</code>, <code>A[i]</code> should be updated to be the new <code>DLoc(V)</code>.</li>
+<li>After a <code>SetLocal(V, D(i))</code>, interpreter slot <code>i</code> should now recover to DFG local <code>D(i)</code>. So <code>A[i]</code> should be updated to DFG local <code>D(i)</code>.</li>
+</ul>
+<p>This gives us an <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_osr_exit_map_builder.h" target="_blank" rel="noopener"><em>OSR event log</em></a> where each log item <code>&lt;i, x&gt;</code> means the value of <code>A[i]</code> now becomes <code>x</code>. When an OSR exit happens, all we need to do is start from the basic-block-start mapping (<code>A[i] = D(i)</code> for all <code>i</code>), and replay the event log till the node causing the OSR exit. We then get the result array <code>A</code> that describes how each interpreter slot should be recovered from the DFG function state.</p>
+<p>To make sure the total size of the OSR event log is linear with respect to program size, we need to make sure each <code>DLoc(V)</code> is only updated <code>O(1)</code> times (since each such update will emit a log item for <em>every</em> interpreter slot currently storing <code>V</code>). This is fairly easy to guarantee, since once <code>V</code> is spilled, it will always be available on the stack till its death, so we don’t need to update <code>DLoc(V)</code> any more. The <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_reg_alloc_decision_maker.h" target="_blank" rel="noopener">DFG register allocator</a> is designed so that each SSA value will only be relocated around the registers at most once before it is spilled, so the constraint is satisfied.</p>
+<p>One complication is that now an SSA value might not be dead after its last visible use in DFG IR, since <code>ShadowStore</code>s may have stored it to one or more imaginary interpreter stack slots, and the value must be kept available in the function state until these interpreter stack slots are dead in the bytecode or overridden by another value (which may happen later than its last use in DFG IR due to optimizations). To solve this issue, at the start of the DFG backend pipeline, we will <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_bytecode_liveness.cpp" target="_blank" rel="noopener">analyze bytecode liveness</a> and figure out when each SSA value is truly dead after taking into account of <code>ShadowStore</code>s. We then explicitly insert a <code>Phantom</code> built-in node (which is a no-op) to <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_phantom_insertion.cpp" target="_blank" rel="noopener">mark the true point of death</a> of each SSA value, so that the liveness management of DFG IR is no different from a traditional SSA IR during backend code generation.</p>
+<p>As a side note, while the scheme described above relies on block-local SSA IR (for the consistent basic-block-start mapping), it can also be extended to support full SSA IR, while still keeping the OSR exit map size linear with respect to program size, and having a logarithmic-time value recovery per interpreter slot. The core idea is to do a <a href="https://en.wikipedia.org/wiki/Heavy-light_decomposition" target="_blank" rel="noopener">heavy-light decomposition</a> of a spanning tree of the CFG of the OSR event log. This is likely better than the existing approaches in industrial VMs (to our knowledge they generally have worst-case-quadratic OSR exit map size), but this will be a future work anyway.</p>
+<p>Finally, we also need to know which bytecode in the interpreter / baseline JIT we should OSR-exit to. This is conceptually very straightforward: the DFG frontend will <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_code_origin.h" target="_blank" rel="noopener">associate a</a> <code>CodeOrigin</code> to each DFG IR node when the initial DFG IR is constructed, which identifies an interpreter bytecode (possibly inside a stack of inlined calls due to speculative inlining) that we should jump onto if an OSR-exit happens. Of course, any DFG pass that moves IR nodes around needs to maintain this <code>CodeOrigin</code> correspondingly.</p>
+<p>To summarize, through the <code>ShadowStore</code> built-in node, we are able to achieve a language-neutral IR that supports OSR exit without work from the user.</p>
+<h3 id="More-on-DFG-IR-the-DFG-Frontend-the-Speculative-Inliner">More on DFG IR, the DFG Frontend, the Speculative Inliner</h3>
+<p>The above two sections have explained the fundamentals of our DFG IR. This section will provide a more systematic overview. While it covers many technical challenges DFG must deal with, admittedly, it might be too detailed and less interesting for many readers. So feel free to <a href="#dfg_type_speculation">skip to the next section</a> if desired.</p>
+<p>As a method JIT, Deegen/DFG must understand the concept of “function” in the guest language, since it is the unit of compilation. Thus Deegen has a function model that the guest language must fit into:</p>
+<ul>
+<li>A function may take arguments and variadic arguments, and may return any (potentially variadic) number of return values.</li>
+<li>A call may pass any (potentially variadic) number of arguments, and may be optionally marked to be an in-place call and/or a must-tail call.</li>
+<li>Lexical capturing must be implemented by Deegen API so Deegen is aware of which local variables are captured by a nested closure.</li>
+</ul>
+<p>Undeniably, this inhibits the flexibility of the guest languages, since if they have a fancy call concept not supported yet, either it has to be soft-implemented (thus slower) or Deegen has to be extended. But it is very hard to find an alternative, and the optimizations enabled by allowing Deegen to understand the function model is huge, so we believe the pros significantly outweight the cons.</p>
+<p>Since Deegen hardcodes the function model, it also provides a few intrinsic bytecodes for users to access the related information (e.g., access the value of a captured variable, create a new closure). These intrinsic bytecodes are translated by the DFG frontend into built-in DFG IR nodes, as shown below.</p>
+<ul>
+<li><code>GetNumVariadicArgs</code>/<code>GetKthVariadicArg</code>: variadic argument accessors.</li>
+<li><code>CreateFunctionObject</code>: create a new function object (closure).</li>
+<li><code>GetUpvalue</code>/<code>SetUpvalue</code>: captured value accessors.</li>
+<li><code>Return</code>: return from the function.</li>
+</ul>
+<p>One interesting detail is that Deegen’s function model uses <a href="https://www.semanticscholar.org/paper/Closures-in-Lua-Ierusalimschy-Figueiredo/73a2e3c03f799956aa5a3188e4eb35c90977a471" target="_blank" rel="noopener">Lua’s Upvalue mechanism</a> to support lexical capturing. This was a natural choice for Deegen: Lua is our first language to support; the Upvalue mechanism is a generic mechanism that can be used to support any language (so it’s not inhibiting our flexibility); and it has no performance downsides compared with alternative designs. However, it poses some interesting challenges to the optimizing JIT.</p>
+<p>Specifically, the upvalue mechanism makes it invisible on when a stack local is modified by a nested closure. While this is a performance benefit for the interpreter and the baseline JIT (as a function can always access its own locals with no overhead, no matter if it is captured by a nested closure), the optimizing JIT cannot reason about when its locals are modified! We cannot conservatively assume any local may be modified by anything at anytime, otherwise, even the standard store/load simplifications cannot happen.</p>
+<p>Fortunately, DFG can translate the Upvalue mechanism to a representation better suited for its own optimization. We chose the “standard” mechanism where the captured variables are explicitly represented, and both the owning function and the nested closures access their values by explicitly dereferencing them. This requires us to have <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_control_flow_and_upvalue_analysis.cpp" target="_blank" rel="noopener">a pass</a> that analyzes which local variables are captured by an Upvalue, and let the DFG frontend emit a <code>CreateCaptureVar</code> built-in node when a local variable gets captured, and emit the <code>GetCapturedVar</code>/<code>SetCapturedVar</code> built-in node instead of <code>GetLocal/SetLocal</code> for accesses of these local variables<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>.</p>
+<p>Aside from the <code>CapturedVar</code>-related complexity, the translation process from the bytecode sequence to the initial DFG IR is fairly straightforward.</p>
+<ol>
+<li>We analyze the bytecode control flow to divide the bytecode sequence into basic blocks.</li>
+<li>For each basic block, we <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_basic_block_builder.cpp#L116" target="_blank" rel="noopener">iterate through each bytecode</a>, and<br>
+a. Generate <code>GetLocal</code>/<code>GetCapturedVar</code> for each input of the bytecode.<br>
+b. Generate the guest language IR node for the bytecode.<br>
+c. Generate <code>ShadowStore</code> and <code>SetLocal/SetCapturedVar</code> for each output.</li>
+</ol>
+<p>The DFG frontend is also responsible for <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_speculative_inliner.cpp" target="_blank" rel="noopener">speculative inlining</a>. Since guest language calls are implemented by Deegen API, and the interpreter / baseline JIT generated by Deegen employs call inline caching (IC), DFG can inspect the call IC and figure out all the call targets in the past executions of a call site. If the call site only ever sees one call target, and the bytecode logic before the call is free of side effects (so if the speculation fails, we can simply re-execute the bytecode; a more complex design can get rid of this limitation, but likely not worth the cost), DFG can speculatively inline the callee.</p>
+<p>While speculative inlining is conceptually straightforward, it is a lot more difficult to do than said. We must correctly handle all the call details (argument passing, variadic argument handling, tail call handling, variadic result handling, etc.), and it also introduces many subtleties with bytecode liveness analysis and OSR exit.</p>
+<p>Fortunately, all of these complexities are confined inside Deegen/DFG and never exposed to the user. This demonstrates the advantage of Deegen as a reusable infrastructure for dynamic languages (just like LLVM as a resuable infrastructure for static languages): the infrastructure handles the tedious, repetitive and error-prone parts of the system, so the user can focus on the more creative tasks.</p>
+<p>We conclude this section with <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_builtin_nodes.h" target="_blank" rel="noopener">a list</a> of the built-in IR nodes in DFG.</p>
+<p><img src="/images/2025-02-27/dfg-builtin-nodes.png" alt="List of the built-in IR nodes in DFG"></p>
+<p>As one can see, the majority of them arise from our function model (to handle arguments / return values / lexical captures), while the rest are basic concepts independent of any language (constants, stack operations, OSR exit information).</p>
+<h3 id="Prediction-Propagation-Type-Speculation-a-name-dfg-type-speculation-a">Prediction Propagation, Type Speculation<a name="dfg_type_speculation"></a></h3>
+<p>Type speculation is a central optimization for DFG. Deegen provides APIs for users to describe the guest language type lattice and the boxing scheme, and it can already optimize the bytecode semantics by eliminating or strength-reducing type checks based on the proven type information (see Section 5.1 of the <a href="https://arxiv.org/pdf/2411.11469" target="_blank" rel="noopener">Deegen interpreter/baseline JIT paper</a>). So all we need to do is provide a few more APIs for users to describe the desired type speculation behavior for DFG.</p>
+<p>We will use the <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/annotated/bytecodes/arithmetic_bytecodes.cpp#L130" target="_blank" rel="noopener">bytecode defintion for the Lua <code>Add</code> bytecode</a> as an example<a name="dfg_add_bytecode_example"></a>:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">DEEGEN_DEFINE_BYTECODE(Add) &#123;</span><br><span class="line">  Operands(</span><br><span class="line">    LocalOrConstant(<span class="string">"lhs"</span>),</span><br><span class="line">    LocalOrConstant(<span class="string">"rhs"</span>)</span><br><span class="line">  );</span><br><span class="line">  Result(BytecodeValue);</span><br><span class="line">  Implementation(Add);</span><br><span class="line">  Variant(</span><br><span class="line">    Op(<span class="string">"lhs"</span>).IsBytecodeSlot(),</span><br><span class="line">    Op(<span class="string">"rhs"</span>).IsBytecodeSlot()</span><br><span class="line">  );</span><br><span class="line">  <span class="comment">// A DFG variant with no type speculation       // new!</span></span><br><span class="line">  DfgVariant();                                   <span class="comment">// new!</span></span><br><span class="line">  <span class="comment">// A DFG variant speculating double + double    // new!</span></span><br><span class="line">  DfgVariant(                                     <span class="comment">// new!</span></span><br><span class="line">    Op(<span class="string">"lhs"</span>).HasType&lt;tDouble&gt;(),                 <span class="comment">// new!</span></span><br><span class="line">    Op(<span class="string">"rhs"</span>).HasType&lt;tDouble&gt;()                  <span class="comment">// new!</span></span><br><span class="line">  );                                              <span class="comment">// new!</span></span><br><span class="line">  TypeDeductionRule(                              <span class="comment">// new!</span></span><br><span class="line">    [](TypeMask lhs, TypeMask rhs) -&gt; TypeMask &#123;  <span class="comment">// new!</span></span><br><span class="line">      <span class="keyword">if</span> (lhs.SubsetOf&lt;tDouble&gt;() &amp;&amp; rhs.SubsetOf&lt;tDouble&gt;())</span><br><span class="line">        <span class="keyword">return</span> x_typeMaskFor&lt;tDouble&gt;;</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> x_typeMaskFor&lt;tBoxedValueTop&gt;;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Lines 1-11 are used by the interpreter and the baseline JIT, which are same as before (see <a href="/2022/11/22/2022-11-22/">the interpreter blog post</a> for an explanation). Line 12-25 are the new APIs used by the DFG, which we will explain next.</p>
+<p>The <code>DfgVariant</code> API (line 13 and 15) defines a type speculation variant for DFG, where each argument to the <code>DfgVariant</code> describes a type assumption for an operand. For example, line 15-18 declares a variant where <code>lhs</code> and <code>rhs</code> must be <code>tDouble</code>: if this variant were executed at runtime, operand <code>lhs</code> and <code>rhs</code> must be <code>tDouble</code>, or it’s undefined behavior. Thus, if DFG chose to use such a variant, it must emit type speculation that checks <code>lhs</code> and <code>rhs</code> are indeed <code>tDouble</code> (and trigger OSR exit if not) before executing the logic of this variant.</p>
+<p>Recall that the execution semantics of Lua <code>Add</code> looks like something below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (lhs.Is&lt;tDouble&gt;() &amp;&amp; rhs.Is&lt;tDouble&gt;()) &#123;</span><br><span class="line">    <span class="comment">// Do double add if both lhs and rhs are double</span></span><br><span class="line">    <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">    Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="comment">// complex logic on handling non-double add</span></span><br><span class="line">    <span class="comment">// based on what the Lua language specification says</span></span><br><span class="line">    ....</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>In the DfgVariant where Deegen is promised that <code>lhs</code> and <code>rhs</code> must be <code>tDouble</code>, Deegen can deduce that the <code>else</code> branch above is never executed, and optimize the execution semantics into simply:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Add</span><span class="params">(TValue lhs, TValue rhs)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">double</span> res = lhs.As&lt;tDouble&gt;() + rhs.As&lt;tDouble&gt;();</span><br><span class="line">  Return(TValue::Create&lt;tDouble&gt;(res));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>And with register allocation where <code>lhs</code> and <code>rhs</code> are passed in register (more on this later), the logic above will compile to the following JIT code</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">0: f2 0f 58 ca      addsd %operand1.f, %operand0.f</span><br></pre></td></tr></table></figure>
+<p>if the output register can take the <code>lhs</code> input register. Or one more instruction if DFG decides that the output register should use a new register:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0: 66 0f 28 d9      movapd %operand0.f, %operand2.f</span><br><span class="line">4: f2 0f 58 da      addsd %operand1.f, %operand2.f</span><br></pre></td></tr></table></figure>
+<p>As you can see, all the overheads are gone, and now the Lua <code>Add</code> is as efficient as a C double addition!</p>
+<p>Let’s go back to our <code>a = a + b + a</code> example. Now DFG has a decision to make: it can implement the <code>Add</code> using the unspeculated DfgVariant in line 13, or using the <code>SpeculateDoubleDouble</code> DfgVariant in line 15.</p>
+<p>If it chooses the former, we will get the same DFG IR as before:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(loc1)  </span><br><span class="line">%<span class="number">2</span> = GetLocal(loc2)  </span><br><span class="line">%<span class="number">3</span> = Add_0(%<span class="number">1</span>, %<span class="number">2</span>)       <span class="comment">-- DfgVariant 0 (any+any)</span></span><br><span class="line">ShadowStore(%<span class="number">3</span>, slot3)</span><br><span class="line">%<span class="number">6</span> = Add_0(%<span class="number">3</span>, %<span class="number">1</span>)      </span><br><span class="line">ShadowStore(%<span class="number">6</span>, slot1)</span><br><span class="line">SetLocal(%<span class="number">6</span>, loc1)   </span><br></pre></td></tr></table></figure>
+<p>Note that we changed <code>Add</code> to <code>Add_0</code> to highlight that this is <code>DfgVariant 0</code> (the no type speculation variant in line 13).</p>
+<p>The interesting thing happens when it chooses the latter. Since that DfgVariant assumes that <code>lhs</code> and <code>rhs</code> must be <code>tDouble</code>, but DFG have no proof (yet) that they must be so, it needs to emit type checks for <code>lhs</code> and <code>rhs</code>. This results in the following DFG IR:</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">%<span class="number">1</span> = GetLocal(loc1)  </span><br><span class="line">%<span class="number">2</span> = GetLocal(loc2)  </span><br><span class="line">TypeCheck(%<span class="number">1</span>, tDouble)    <span class="comment">-- OSR exit if fails</span></span><br><span class="line">TypeCheck(%<span class="number">2</span>, tDouble)    <span class="comment">-- OSR exit if fails</span></span><br><span class="line">%<span class="number">3</span> = Add_1(%<span class="number">1</span>, %<span class="number">2</span>)        <span class="comment">-- DfgVariant 1 (double+double)</span></span><br><span class="line">ShadowStore(%<span class="number">3</span>, slot3)</span><br><span class="line">TypeCheck(%<span class="number">3</span>, tDouble)    <span class="comment">-- OSR exit if fails</span></span><br><span class="line">TypeCheck(%<span class="number">1</span>, tDouble)    <span class="comment">-- OSR exit if fails</span></span><br><span class="line">%<span class="number">6</span> = Add_1(%<span class="number">3</span>, %<span class="number">1</span>)      </span><br><span class="line">ShadowStore(%<span class="number">6</span>, slot1)</span><br><span class="line">SetLocal(%<span class="number">6</span>, loc1)   </span><br></pre></td></tr></table></figure>
+<p>Note that the two DFG IR snippets above have identical <em>externally observable behavior</em>, but different performance characteristics. Specifically, the former IR snippet will never OSR exit. If <code>a</code> or <code>b</code> is not double, <code>Add_0</code> will take the AOT slow path, which gracefully handles the <code>Add</code> based on whatever the Lua standard says, and returns control to DFG JIT code. However, for the latter IR snippet, if <code>a</code> or <code>b</code> is not double, an OSR exit will be triggered by the <code>TypeCheck</code>, and execution will bail out from DFG and continue in the baseline JIT. The user program will still produce identical result (so no externally observable behavior difference), but the rest of the function is no longer executed in DFG, but in the baseline JIT.</p>
+<p>So why do we want to produce the latter piece of IR? Well, because it is more optimizable. For example:</p>
+<ul>
+<li>The <code>TypeCheck</code> in line 8 is redundant due to the <code>TypeCheck</code> in line 3: if <code>%1</code> were not <code>tDouble</code>, line 3 would have caused an OSR exit, and control flow would never reach line 8. Thus line 8 can be removed.</li>
+<li>The <code>TypeCheck</code> in line 7 must pass, because user’s <code>TypeDeductionRule</code> of <code>Add</code> (see line 19-25 of the <a href="#dfg_add_bytecode_example">bytecode specification earlier</a>) stated that adding two <code>tDouble</code> must produce a <code>tDouble</code>. The fact that control reached line 7 means the <code>TypeCheck</code>s in line 3 and 4 have passed, so <code>%1</code> and <code>%2</code> must be <code>tDouble</code>, so <code>%3</code> is also a <code>tDouble</code> and line 7 can be removed.</li>
+<li>The <code>Add_1</code> (double-double add) has no side effects - thanks to the removal of the branch handling non-double add, Deegen can easily analyze the LLVM IR to realize that <code>Add_1</code> will not call other functions, will not write anything to the heap, and does not even need any scratch registers so even the full register state can be preserved (while <code>Add_0</code> could do all of these things). All of these knowledge allows DFG to do more high-level optimizations, or simply generate better JIT code by keeping more stuffs in registers.</li>
+</ul>
+<p>We haven’t yet implement the optimization passes, so we cannot eliminate those redundant <code>TypeCheck</code> as of now, but one can easily see that it is doable.</p>
+<p>So, let’s get back to the original question: how should DFG decide whether it should emit the former IR snippet with no type speculation, or the latter IR snippet that speculates <code>a</code> and <code>b</code> are double?</p>
+<p>The answer is clear: DFG should emit the latter snippet only if it is confident that <code>a</code> and <code>b</code> are likely double, since if an OSR exit is triggered, we are thrown back into the baseline JIT, and all our later optimizations become nothing.</p>
+<p>This is where the <code>TypeDeductionRule</code> comes into play.</p>
+<p>For each output value of the bytecode, the user must specify a <code>TypeDeductionRule</code> for it (see <a href="dfg_add_bytecode_example">line 19-25</a> in the <code>Add</code> bytecode specification earlier for example). There are two options:</p>
+<ul>
+<li>Ask Deegen to <code>ValueProfile</code> it. In this case, Deegen will inject profiling logic into the baseline JIT to collect information when the bytecode is executed, so DFG can inspect the profile to see the types of that value in past executions.</li>
+<li>Specify a function describing how to compute the possible types of this output from the possible types of the input operands. It’s fine to overapproximate (e.g., return <code>tTop</code> even if in reality the result is always <code>tDouble</code>), but it’s a bug if e.g., the function claims the output is always <code>tDouble</code> while in reality the bytecode produced something else.</li>
+</ul>
+<p>The Lua <code>Add</code> example earlier chose the second option. The type deduction function (line 19-25) should be straightforward to understand: if both input operands are known to be <code>tDouble</code>, we can tell the result of the <code>Add</code> is also <code>tDouble</code>. Otherwise, the <code>Add</code> may return anything, so <code>tBoxedValueTop</code> is returned.</p>
+<p>It is not always possible to statically determine the output types from the input types, e.g., for the bytecode that returns a property in an object (e.g., <code>o.x</code>), even if we know <code>o</code> is an object, we can’t know anything about <code>o.x</code>. This is also the case for most other bytecodes that access the heap, so <code>ValueProfile</code> would be the appropriate option for them.</p>
+<p>From the value profiles and the type deduction rules, DFG can produce a reasonable prediction on the possible types (i.e., a <code>TypeMask</code>) of all the SSA values. This is called the <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_prediction_propagation.cpp" target="_blank" rel="noopener">prediction propagation pass</a>.</p>
+<p>Specifically, for each value with a <code>ValueProfile</code> (which records what types it has been in past executions), we use the <code>TypeMask</code> from the <code>ValueProfile</code> as its prediction. This would give us a reasonable prediction for values loaded from the heap, values returned by a function call, etc.</p>
+<p>The rest of the values must have a type deduction rule associated with each of them. We use the rules to deduce their <code>TypeMask</code> and propagate to fixpoint (that is, we repeatedly run all the rules until nothing changes anymore<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>).</p>
+<p>After the prediction propagation pass, each SSA value <code>V</code> in DFG IR is associated with a <code>prediction(V)</code>, a TypeMask of its predicted type. The promise we get is the following:</p>
+<ul>
+<li>At runtime, if no <code>ValueProfile</code> encountered previously-unseen types, the type of each SSA value will be a type within its prediction <code>TypeMask</code>.</li>
+</ul>
+<p>The proof follows directly from that we require <code>TypeDeductionRule</code> to be an overapproximation and we run the rules until fixpoint.</p>
+<p>Therefore, for each SSA value <code>V</code>, if our <em>speculation</em> of its type (which failure would trigger OSR exit) is a superset of <code>prediction(V)</code>,  as long as the baseline JIT has collected a complete-enough <code>ValueProfile</code> to cover the program behavior (so we do not see a value with unexpected type loaded from the heap, for example), no OSR exit will be triggered.</p>
+<p>This answers our questions of how DFG should select between the <code>DfgVariant</code>s.</p>
+<ol>
+<li>We should only choose a <code>DfgVariant</code> if for each input <code>V</code>, the speculation of <code>V</code> speculated by this DfgVariant is a superset of <code>prediction(V)</code>.</li>
+<li>If there are multiple <code>DfgVariant</code>s satisfying (1), we should choose the one with the most strict speculation.</li>
+</ol>
+<p>Condition (1) guarantees that we will not trigger OSR exit on already-known program behavior (since our speculation is alreadys a superset of the prediction). And condition (2) allows us to make the strongest speculation possible, thus providing as much information as possible to the optimizer.</p>
+<p>In DFG, this is called the <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_speculation_assignment.cpp" target="_blank" rel="noopener">speculation assignment pass</a>, which is executed after prediction propagation. After the pass, the desired <code>DfgVariant</code> is selected for each guest language IR node, with the type speculations (<code>TypeCheck</code>) decided correspondingly.</p>
+<p>Finally, as an engineering-level side note, compiler performance is heavily impacted by cache hit rate, so it is important to squeeze down the memory footprint and make more stuffs fit into the cache. Thus, while in the post above, a <code>TypeCheck</code> is written as an IR node for clarity, at engineering level, a <code>TypeCheck</code> is not an IR node. Instead, it is recorded on each use edge of an SSA value<sup class="footnote-ref"><a href="#fn5" id="fnref5">[5]</a></sup>.</p>
+<p>So in DFG, the semantics of each IR node is to first execute all the <code>TypeCheck</code>s recorded on its input edges, then execute the node itself. This fits our purpose as an IR for dynamic languages: type speculation is a key optimization after all, so it makes sense to engineer the IR for it.</p>
+<p>To summarize the things we’ve covered so far, our DFG compiler starts with a bytecode sequence of the function, translates it to a block-local SSA IR (potentially speculatively inlining more functions during the process) with built-in support for OSR exit, uses the baseline JIT <code>ValueProfile</code>s and type deduction rules to predict the types of each SSA value, and finally assigns type speculations for each guest language IR node. This sets up the stage for the optimizer (e.g., to remove redundant <code>TypeCheck</code>s), but the optimizer itself is still future work.</p>
+<h3 id="Copy-and-Patch-with-Generic-Register-Allocation">Copy-and-Patch with Generic Register Allocation</h3>
+<p>The rest of this post will discuss the DFG backend<sup class="footnote-ref"><a href="#fn6" id="fnref6">[6]</a></sup> that lowers the DFG IR to efficient JIT code.</p>
+<p>As before, Copy-and-Patch is our primary driver to generate code, since it allows us to automatically produce the JIT code generators from the LLVM IR of the logic we want to generate. For the <a href="/2023/05/12/2023-05-12/">baseline JIT</a>, we have extended Copy-and-Patch to support polymorphic inline caching and hot-cold code splitting: two important optimizations for dynamic languages. However, for the DFG JIT, Copy-and-Patch is still missing one critical optimization: generic register allocation.</p>
+<p>For a quick recap, Copy-and-Patch abuses relocation records to represent runtime constants. They become holes in the machine code, which can be identified and patched during JIT compilation into the desired runtime constant value.</p>
+<p>While the relocation record trick allows us to configure the constants, it cannot configure the registers. The <a href="/assets/copy-and-patch.pdf">original Copy-and-Patch paper</a> workarounds this limitation by enumerating the different register configurations, and generating a stencil for each of them. The number of combinations will quickly explode if no restriction is put on how the registers can be used – thus, the original copy-and-patch paper only performs register allocation for expressions, which allows the temporary registers to be used as a stack. However, this would not work for an SSA IR: we need <em>generic register allocation</em> with no restrictions on how the registers are used.</p>
+<p>Conceptually, what we want is very simple: given a sequence of assembly, we want to change the name of some registers, so they now operate on a different set of register names of our choice. What’s the hard part?</p>
+<p>Well, in x86-64, despite the registers are called “general purpose registers”, they are not truly general-purpose due to various legacy reasons or technical limitations (The situation is actually much cleaner for ARM64, but Deegen is targeting x86-64 now, and x86-64 is clearly an important ISA to support).</p>
+<p>As a result, changing one register to another may result in an invalid instuction, or require a different instruction encoding. Specifically:</p>
+<ul>
+<li>Some instructions may hard-code their input/output registers, so you cannot specify anything else (e.g., <code>div</code> always work on <code>rdx:rax</code>).</li>
+<li><code>ah</code>/<code>bh</code>/<code>ch</code>/<code>dh</code> have no counterparts in other registers (e.g., no <code>sih</code>/<code>r8h</code>).</li>
+<li>Instructions that operate on <code>ah</code>/<code>bh</code>/<code>ch</code>/<code>dh</code> may impose special constraints on the other operands (e.g., <code>movzx r8d, ch</code> is illegal).</li>
+<li>Some registers cannot be used in certain SIB and ModRM addressing modes. For example, <code>[r12+rax*8]</code> is a valid addressing mode, but <code>[r13+rax*8]</code> is illegal. The full idiosyncracy list is:<br>
+– <code>[rbp/r13+index*scale]</code> is not a legal SIB addressing mode.<br>
+– <code>[r12/r13/rbp/rsp]</code> is not a legal ModRM addressing mode.<br>
+– <code>[r12/rsp+disp]</code> is not a legal ModRM addressing mode.</li>
+<li>Changing the first eight register (<code>rax</code>,<code>rbx</code>,<code>xmm0</code>, etc.) to the later eight register (<code>r8</code>,<code>xmm8</code>, etc.) may introduce new prefix bytes and make the instruction longer by one byte.</li>
+</ul>
+<p>So in order to configure the Copy-and-Patch stencil to work on different registers (thus supporting generic register allocation), we must solve two issues:</p>
+<ol>
+<li>The instruction must remain valid after changing the register name.</li>
+<li>We need to have a solution for the potential changes in instruction length, which invalidates all jump targets (and jump table targets, which are not even in the code section), may make short jumps unrepresentable, and causes many complications to polymorphic inline caching, as it requires very precise knowledge about the code layout.</li>
+</ol>
+<p>As you might have seen, this is a pure engineering problem: none of the above-mentioned idiosyncracies are due to a fundamental limitation of ISA design, they are just technical debts that get piled up during the 50-year history of x86.</p>
+<p>But we are here to solve the problem. And an engineering problem requires an engineering solution. The crucial observation is below:</p>
+<ul>
+<li>In x86-64 instruction encoding, a register is represented by <code>3+1</code> bits: the highest bit is represented separately from the lower 3 bits. So depending on the highest bit, the 16 GPR and 16 FPR registers are divided into two groups:<br>
+– <code>Group1</code> for register 0-7 (<code>rax</code>-<code>rdi</code>,<code>xmm0-7</code>).<br>
+– <code>Group2</code> for register 8-15 (<code>r8-15</code>,<code>xmm8-15</code>).</li>
+<li>There are seven registers that are involved in idiosyncracies: <code>rax</code>,<code>rbx</code>,<code>rcx</code>, <code>rdx</code>,<code>rbp</code>,<code>r12</code>,<code>r13</code><sup class="footnote-ref"><a href="#fn7" id="fnref7">[7]</a></sup>.<br>
+– Four of them (<code>rbx</code>,<code>rbp</code>,<code>r12</code>,<code>r13</code>) are C callee-saved registers, so they are best used to store the VM state.</li>
+<li>If a register is not one of the seven idiosyncratic registers, changing it to another register within the same 8-register-group is as trivial as changing 3 bits in the binary code to the new register machine ordinal.</li>
+</ul>
+<p>Thus, not considering the seven idiosyncratic registers, it is trivial to change one register to another register within the same 8-reigster-group (<code>Group1</code> or <code>Group2</code>), and doing so will not change the length of the instruction, so everything remains valid.</p>
+<p>The cost of excluding these seven registers from our register allocation scheme is also acceptable, since four of them (<code>rbx</code>,<code>rbp</code>,<code>r12</code>,<code>r13</code>) are C callee-saved registers which are best used to store the register-pinned VM state, and cannot participate in reg alloc anyway. For the other three registers (<code>rax</code>,<code>rcx</code>,<code>rdx</code>), note that each of our DFG IR node is implemented by a sequence of instructions and already often need scratch registers. While always making three registers as scratch is sometimes wasteful, it is not too bad either.<sup class="footnote-ref"><a href="#fn8" id="fnref8">[8]</a></sup></p>
+<p>The observation that we can freely modify register names within its 8-register-group is sufficient to solve the “combinatorial explosion” problem in enumerating register configurations. Specifically, for each DFG IR node, the machine registers can be categorized based on what they store as follow:</p>
+<ul>
+<li><strong>VM state</strong>: the register stores a register-pinned VM state (e.g., the guest language stack base) and must remain unchanged after the node.</li>
+<li><strong>Input</strong>: the register stores an input operand to the node, and must remain unchanged after the node, unless it is repurposed to store an output.</li>
+<li><strong>Output</strong>: the register will store an output produced by the node.</li>
+<li><strong>Scratch</strong>: the register stores a garbage value, and may be used by the node as scratchpad.</li>
+<li><strong>Passthrough</strong>: the register stores a useful value but not an operand of the node, and must remain unchanged after the node.</li>
+</ul>
+<p>How many scratch registers are needed by the node logic can be determined statically (more on this later). Since we now have the ability to freely change register names in the stencil within the same 8-register-group (<code>Group1</code> or <code>Group2</code>), we only need to enumerate:</p>
+<ul>
+<li>Whether each input/output should use GPR or FPR<sup class="footnote-ref"><a href="#fn9" id="fnref9">[9]</a></sup>.</li>
+<li>Whether each input/output register is a <code>Group1</code> or <code>Group2</code> register.</li>
+<li>Whether an input register is repurposed to store an output.</li>
+<li>How many scratch registers are <code>Group1</code> register.</li>
+</ul>
+<p>This reduces the number of combinations we need to enumerate to a very small number (in practice, only about 4 on average in LuaJIT Remake).</p>
+<p>So in our extended Copy-and-Patch scheme, each Copy-and-Patch stencil gets a list of “register micro-patches”. Each register micro-patch is described by the following struct:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">RegMicroPatch</span> &#123;</span></span><br><span class="line">  <span class="comment">// The byte offset of this register in binary code</span></span><br><span class="line">  <span class="keyword">uint32_t</span> m_byteOffset;</span><br><span class="line">  <span class="comment">// The bit offset of this register in binary code</span></span><br><span class="line">  <span class="keyword">uint8_t</span> m_bitOffset;</span><br><span class="line">  <span class="comment">// Whether the 3-bit register machine ordinal should be flipped</span></span><br><span class="line">  <span class="comment">// (it's an idiosyncracy in some x86-64 instructions encoding)</span></span><br><span class="line">  <span class="keyword">bool</span> m_shouldFlip;</span><br><span class="line">  <span class="comment">// The purpose of this register (input/output/scratch/passthru)</span></span><br><span class="line">  <span class="keyword">uint8_t</span> m_regClass;</span><br><span class="line">  <span class="comment">// The ordinal of this register in m_regClass</span></span><br><span class="line">  <span class="keyword">uint8_t</span> m_ordInClass;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>And at JIT code generation time, after the standard copy-and-patch process, we need to apply the register micro-patches based on the register configuration, so the JIT code operates on our desired registers. This is shown below:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Apply a RegMicroPatch to the generated JIT code</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">RegMicroPatch::Apply</span><span class="params">(<span class="keyword">uint8_t</span>* code, RegConfig&amp; regConfig)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// The machine ordinal of our desired register</span></span><br><span class="line">  <span class="keyword">uint8_t</span> val = regConfig[m_regClass][m_ordInClass];</span><br><span class="line">  <span class="comment">// We only need the lower 3 bits</span></span><br><span class="line">  val &amp;= <span class="number">7</span>;</span><br><span class="line">  <span class="comment">// Flip it if needed (x86-64 idiosyncracy)</span></span><br><span class="line">  val ^= (m_shouldFlip ? <span class="number">7</span> : <span class="number">0</span>);</span><br><span class="line">  <span class="comment">// Patch it into the machine code</span></span><br><span class="line">  code[m_byteOffset] |= (val &lt;&lt; m_bitOffset);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>As one can see, the logic executed at runtime to generate the JIT code is still extremely simple: this is good as we want our code generator to run fast.<sup class="footnote-ref"><a href="#fn10" id="fnref10">[10]</a></sup></p>
+<p>Of course, Deegen needs to generate this <code>RegMicroPatch</code> stream at build time, by analyzing the machine instructions and figure out which bits in the binary code are used to encode the registers.</p>
+<p>This is not a trivial task due to how complicated x86-64 instructions are. But crucially, this happens at build time, so performance is not a problem. Designing a high-performance solution is always hard, but we only want a working solution here, and there are numerous existing tools on x86-64 assembly.</p>
+<p>We chose <a href="https://github.com/zyantific/zydis" target="_blank" rel="noopener">ZyDis</a>, a x86-64 disassembler/assembler tool to do the job. We use ZyDis at build time to disassemble the Copy-and-Patch stencil object file generated by LLVM. For each machine instruction, ZyDis tells us a list of registers involved in this instruction. For each register that participates in register allocation, we change it to another value, and ask ZyDis to encode the instruction back to machine code. We then compare the machine code to figure out which bits have changed, and thus deduce which 3 bits encoded this register. This is clearly not an elegant or efficient solution, but it works, and that’s what we want (since it happens at build time).</p>
+<h3 id="Runtime-C-Calls">Runtime C Calls</h3>
+<p>Register allocation introduced additional complications with the runtime C calls.</p>
+<p>If the JIT code makes a C call, due to the C calling convention, after the call, only the 6 callee-saved registers will retain their original contents, and all other registers (all 16 FPRs, the 9 other GPRs) will be clobbered. This clobbers most of our register allocation state (since most of the C callee-saved registers are used by us to store the more important register-pinned VM states, not the temporary values for register allocation).</p>
+<p>If we do nothing, our register allocator would need to effectively spill everything before every node that potentially makes a C call, which is not ideal.</p>
+<p>It turns out that we can do better by characterizing the C calls in two dimensions.</p>
+<p>First, whether the C call is only executed rarely:</p>
+<ol>
+<li>The C call may be commonly executed as part of the node logic.</li>
+<li>The C call may only be executed in rare cases (e.g., bump allocator, IC miss).</li>
+</ol>
+<p>Second, the register demand of the C code being called:</p>
+<ol>
+<li>The called C code is a leaf function (that doesn’t call other C functions).</li>
+<li>The called C code is a complex function that calls into a lot of other things.</li>
+</ol>
+<p>These boil down to three combinations that require different solutions:</p>
+<ol>
+<li>Commonly-executed leaf C call. The C call only needs a small set of registers for itself, so it should preserve all registers by itself so that no registers are clobbered after the C call.</li>
+<li>Commonly-executed complex C call. The C call will destroy most of the register allocation state anyway, so it’s better for our register allocator to proactively spill all temporary registers to the stack.</li>
+<li>Rarely-executed C call (no matter leaf or not). The C call is rarely executed, so it makes sense to spill the register state when the call actually happens, so the cost is paid only when it is needed.</li>
+</ol>
+<p>This makes <code>preserve_most</code> (<a href="https://clang.llvm.org/docs/AttributeReference.html#preserve-most" target="_blank" rel="noopener">Clang docs</a>) the ideal calling convention for case 1 and 3. And for case 2, we should proactively disable register allocation for the node and spill everything to stack. In a well-designed VM, most of the C calls belong to case 1 and 3, so this allows our register allocator to avoid many unnecessary “spill-all” decisions due to the C calls.</p>
+<p>To summarize, for JIT code that calls C functions, DFG will only enable register allocation for the node if the C function is marked <code>preserve_most</code> (which preserves all GPRs, but no FPRs). The cost for the user is small (only adding a function attribute), but it helps a lot with the efficiency of the register allocator.</p>
+<p>An extra complication is the function arguments. The arguments must sit in specific registers as expected by the C calling convention. The original machine instruction sequence generated by LLVM satisfies this constraint with no problem, but our register allocator works by renaming registers in the machine instructions, and after renaming, the arguments are no longer in where the C code expected.</p>
+<p>To solve this, Deegen <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/deegen/deegen_dfg_jit_regalloc_rt_call_wrapper.h" target="_blank" rel="noopener">rewrites the <code>call</code> instruction</a> in the assembly to push all the argument registers, and call an AOT-generated assembly stub function instead. Since the arguments are always pushed in the order expected by the callee, the assembly stub can pop them into the desired registers, and then call the real callee. The <code>preserve_most</code> calling convention does not save the FPR state, so the assembly stub is also responsible for saving and restoring the needed FPR state. This is not very interesting so I will not dive into the details.</p>
+<h3 id="The-AOT-Slow-Paths-Polymorphic-Inline-Caching">The AOT Slow Paths, Polymorphic Inline Caching</h3>
+<p>Register allocation also causes some challenges to the AOT slow paths. In the JIT code, the operands and outputs are stored in registers. But since the slow paths are AOT-generated, they cannot adapt to the different register configurations used in the JIT code. Furthermore, after the AOT slow path finishes, control need to be transferred back to the JIT code, and all the registers (including the register holding the output of the node) must have the contents expected by the JIT code.</p>
+<p>Our solution is to have a dedicated “register spill region” in the DFG stack frame. When control transfers from the JIT code to an AOT slow path, it branches to an AOT-generated assembly stub function instead. The stub function saves all registers to the spill region in the DFG stack frame, and transfers control to the real AOT slow path. Now, all the registers become slot ordinals into the DFG stack frame, so the AOT slow path logic can then read and write values from the DFG stack frame just like how the interpreter does. Right before the control is transferred back to the JIT code, it loads the values from the spill region back to the registers, so the JIT code sees the register state it expected.</p>
+<p>The code stubs generated by polymorphic inline caching needs to have the matching register configuration as expected by the main JIT code. Thus, for nodes that employ polymorphic IC, DFG will record the register configuration used by the node in the SlowPathData. When the IC miss logic generates a new IC code stub, it needs to load the register configuration and configure the machine code to use the right registers (using the identical mechanism that we configure registers for the main JIT code).</p>
+<h3 id="Determine-the-Scratch-Register-Demand">Determine the Scratch Register Demand</h3>
+<p>One last challenge is that we need to automatically determine how many GPR/FPR scratch registers are needed by the logic of an IR node.</p>
+<p>Deegen uses a relatively hacky solution: it gradually increases the number of passthrough registers (which values must be preserved after the node logic, so LLVM has fewer and fewer scratch registers to use), and let LLVM compile the node logic to assembly. It then compare the different assembly pieces to see how worse the assembly gets as the number of passthrough registers increase (e.g., if the assembly starts having more <code>push</code>/<code>pop</code>, clearly LLVM is running out of registers, but the situation can be more subtle in some cases), and use this as a heuristic to determine how many scratch registers are needed for each IR node. I wouldn’t say this is an elegant strategy, but it works well enough for our use case.</p>
+<p>We also support letting an output born in the place of an input register. Such a variant is useful if it allows us to keep one more value in register (which can potentially be more useful than one of the input operands), and in some cases, this is even preferred as doing so can generate better code (e.g., the <code>double</code> add example earlier, due to x86-64 being a two-address-code). Deegen uses the similar heuristic as how it determines the scratch register demand to determine whether it is useful to have code variants where an output borns in the place of an input register, and whether such code variants are preferred over the normal variants.</p>
+<h3 id="The-DFG-Register-Allocator">The DFG Register Allocator</h3>
+<p>Finally, we are ready to cover the DFG register allocator.</p>
+<p>The register allocator is probably the least appreciated component in an VM. It is tedious, error-prone, performance-sensitive (in terms of compile time), full of messy details, yet is needed by every VM to generate good JIT code.</p>
+<p>Due to the block-local SSA IR design in DFG, the register allocator only works inside a basic block (everything is spilled across basic blocks)<sup class="footnote-ref"><a href="#fn11" id="fnref11">[11]</a></sup>, which makes it a bit easier to implement (but even so there are still tons of details).</p>
+<p>As probably nobody is interested in these details (but only the end result that it’s working), I will skip all the details and only give a brief overview.</p>
+<p>In the bytecode specification, the user may optionally specify if each operand and output must sit in GPR or FPR. If no specification is given, Deegen assumes that the JIT code would be equally efficient no matter which register bank is chosen, and will generate stencils for both cases.</p>
+<p>So before register allocation, DFG must choose the register bank (GPR or FPR) for each use of the SSA value where both banks are allowed, while attempting to minimize the number of moves between GPR and FPR. This is implemented by a simple <a href="https://github.com/luajit-remake/luajit-remake/blob/a1275ae480c7766d5b41df2d9edd6b1c637090ad/drt/dfg_register_bank_assignment.cpp" target="_blank" rel="noopener">register bank assignment pass</a>. For each use of an SSA value where both GPR and FPR are allowed, it checks if there is an earlier use that forces this value to be in GPR or FPR. If so, it simply chooses the same register bank. Otherwise, it puts the node on a pending list. When it encounters a later use of the value that forces GPR or FPR, all uses on the pending list will also choose that register bank (so it’s not moved between GPR and FPR).</p>
+<p>Since DFG register allocation only happens inside a basic block, “spill the register which next use is furthest in the future” is a good greedy strategy<sup class="footnote-ref"><a href="#fn12" id="fnref12">[12]</a></sup>. Thus, we build the use list of each SSA value, and track the next use of each register. When we generate code for an IR node, we spill registers (based on the rule above) to satisfy the scratch register demand of the IR node, load the operands into registers, then generate code for the node.</p>
+<h3 id="Conclusion">Conclusion</h3>
+<p>In this post, we explained the key components of Deegen’s third-tier DFG JIT:</p>
+<ul>
+<li>The definition of an IR with first-class support for OSR exit, that consists of <em>built-in</em> nodes and <em>guest language</em> nodes.</li>
+<li>The frontend that translates the guest language bytecode sequence to such an IR and performs speculative inlining.</li>
+<li>The middle-end that performs prediction propagation and type speculation assignment, two key passes for a speculative optimizing JIT.</li>
+<li>The backend that performs register allocation and lowers the IR to efficient machine code.</li>
+</ul>
+<p>All the above components are agnostic of the guest language, and requires no work from the user: at build time, Deegen automatically generate all the guest-language-specific information from the bytecode defintion and execution semantics.</p>
+<p>While the optimization passes themselves are still future work, with the compiler infrastructure, IR, frontend, and backend already working, the stage for the optimization passes has been set, and we are on a solid ground.</p>
+<h4 id="Footnotes">Footnotes</h4>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>While most of the designs in Deegen’s DFG IR can be traced to a similar concept in JavaScriptCore DFG IR, there are major and minor differences everywhere. So for readers interested in the <em>spirit</em> of DFG, this article will teach you both JSC DFG and Deegen DFG :) But for those who intend to hack on JavaScriptCore’s codebase, this article is likely not useful and may even cause confusion due to the similar but different concepts and invariants. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn2" class="footnote-item"><p>In fact, Lua <code>Add</code> only behaves as arithmetic addition on numbers. It has complex specifications of behaviors when the operands are non-numbers. <a href="#fnref2" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn3" class="footnote-item"><p>One additional complexity is that our representation of <code>CapturedVar</code> must be interoperable with the original upvalues, since the closures created by DFG code may be executed in interpreter and baseline JIT mode, which will still use the original upvalue mechanism to access its upvalues. Fortunately, this can be solved by making our <code>CapturedVar</code> a <a href="https://www.semanticscholar.org/paper/Closures-in-Lua-Ierusalimschy-Figueiredo/73a2e3c03f799956aa5a3188e4eb35c90977a471" target="_blank" rel="noopener">closed upvalue</a>. Finally, when an OSR exit happens, we must transform these <code>CapturedVar</code> back to normal upvalues. <a href="#fnref3" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn4" class="footnote-item"><p>Like most of the fixpoint algorithms, the worst-case time complexity is very high. However, with clever engineering-level optimizations, it is possible to achieve near-linear practical behavior on most inputs. For example, the prediction propagation algorithm here in DFG only runs each rule about 1.2 times on average on our benchmarks. <a href="#fnref4" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn5" class="footnote-item"><p>Each use edge is also designed to fit in an 8-byte machine word, and the <code>TypeCheck</code> information is stored by stealing a few bits from the representation. <a href="#fnref5" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn6" class="footnote-item"><p>This is also where Deegen DFG diverges fundamentally from JavaScriptCore DFG: the JavaScriptCore DFG backend works by hand-crafting the desired JIT code directly in assembly. Deegen, on the other hand, must generate the DFG backend automatically from the user-written C++ bytecode semantics. <a href="#fnref6" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn7" class="footnote-item"><p>Aside from the list, RSI and RDI are also hardcoded by <code>rep</code> instructions, but modern compilers generally consider <code>rep</code> instructions not worthy to use, and will not use them unless explicitly requested by programmer. So Deegen currently will fire a build-time assert if it noticed that the JIT code contains <code>rep</code> instructions that it cannot handle. <a href="#fnref7" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn8" class="footnote-item"><p>Furthermore, <code>rax</code> and <code>rdx</code> are used by the C calling convention to store return values, so there are some extra complications with C calls to use them in register allocation. <a href="#fnref8" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn9" class="footnote-item"><p>In most cases, an operand can only be used from a specific register bank (e.g., FPR cannot be used as an address), so there is usually no choice here. But sometimes the JIT code can be equally efficient regardless of the operand is in GPR or FPR (e.g., the operand is only stored to the RAM), in which case we will generate stencil variants for both banks. <a href="#fnref9" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn10" class="footnote-item"><p>Even though in an optimizing JIT, the code generation performance is much less important due to the cost of the optimizations, it’s still good to run fast! <a href="#fnref10" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn11" class="footnote-item"><p>I wouldn’t say this is the best solution, but this is also what is used by JavaScriptCore, so at the minimum, it’s a good first-iteration solution. <a href="#fnref11" class="footnote-backref">↩︎</a></p>
+</li>
+<li id="fn12" class="footnote-item"><p>“Evict the one with furthest next-use” is the well-known optimal algorithm for the offline cache eviction problem (you have a sequence of accesses that is known beforehand, and you want to maintain a fixed-sized cache to hit as many accesses as possible). However, the goal function is slightly different for register allocation. Specifically, an SSA value only needs to be spilled once, and we have two register banks (GPR and FPR), so this algorithm is no longer optimal. <a href="#fnref12" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>
+<link rel="stylesheet" href="/css/spoiler.css" type="text/css"><script src="/js/spoiler.js" type="text/javascript" async></script>
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+    <!--
+      <a data-url="https://sillycross.github.io/draft2/index.html" data-id="cm7gxnmmt0003feqke0av7gnw" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+    -->
+      
+      
+
+    </footer>
+  </div>
+  
+    
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  
+
+
+  
+
+
+  
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2023/">2023</a><span class="sidebar-module-list-count">2</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2022/">2022</a><span class="sidebar-module-list-count">9</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="../archives/2021/">2021</a><span class="sidebar-module-list-count">7</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list-recent-posts">
+      
+        <li>
+          <a href="../2023/06/11/2023-06-11/">Debugging a Bit-Flip Error</a>
+        </li>
+      
+        <li>
+          <a href="../2023/05/12/2023-05-12/">Building a baseline JIT for Lua automatically</a>
+        </li>
+      
+        <li>
+          <a href="../2022/11/22/2022-11-22/">Building the fastest Lua interpreter.. automatically!</a>
+        </li>
+      
+        <li>
+          <a href="../2022/10/02/2022-10-02/">Pitfalls of using C++ Global Variable Constructor as a Registration Mechanism</a>
+        </li>
+      
+        <li>
+          <a href="../2022/07/18/2022-07-18/">How to check if a real number is an integer in C++?</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2025 Haoran Xu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<!--<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>-->
+
+<script src="../js/bootstrap/bootstrap.min.js"></script>
+
+
+
+  
+<link rel="stylesheet" href="../fancybox/jquery.fancybox.css">
+
+  
+<script src="../fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="../js/script.js"></script>
+
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    menuSettings: {
+      zoom: "None"
+    },
+    showMathMenu: false,
+    jax: ["input/TeX","output/CommonHTML"],
+    extensions: ["tex2jax.js"],
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js"],
+      equationNumbers: {
+        autoNumber: "AMS"
+      }
+    },
+    tex2jax: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]]
+    }
+  });
+</script>
+
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.1/MathJax.js"></script><!-- hexo-inject:begin --><!-- hexo-inject:end -->
+ 
+
+</body>
+</html>

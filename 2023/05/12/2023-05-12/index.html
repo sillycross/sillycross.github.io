@@ -30,7 +30,7 @@
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/factorial-jit-code.png">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-05-12/perf-numbers.png">
 <meta property="article:published_time" content="2023-05-12T00:00:00.000Z">
-<meta property="article:modified_time" content="2023-06-12T07:21:31.262Z">
+<meta property="article:modified_time" content="2025-02-23T01:09:58.051Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://sillycross.github.io/images/2023-05-12/deegen-arch.png">
@@ -436,7 +436,7 @@
 <p>However, as it turns out, with some clever tricks and cooperation from LLVM IR, doing only ASM block rearrangements is already sufficient to achieve a lot: we can support all the inline caching stuffs, among other things.</p>
 <p>The full trick is the following. Recall that we are only using <code>CallBr</code> as a device to express an opaque control flow, and the <code>InlineAsm</code> inside <code>CallBr</code> does not matter. So we will use this <code>InlineAsm</code> to carry down information to the textual assembly level, as shown below.</p>
 <p><img src="/images/2023-05-12/callbr-example.png" alt="The CallBr trick at LLVM IR level and the resulting assembly"></p>
-<p>As one can see, the previledged instruction <code>hlt</code> is used as a magic to allows us to identify the <code>CallBr</code> in the textual assembly. Then, the fake branches following the <code>hlt</code> allows us to know the assembly labels that implements each logic case.</p>
+<p>As one can see, the previledged instruction <code>hlt</code> is used as a magic to allow us to identify the <code>CallBr</code> in the textual assembly. Then, the fake branches following the <code>hlt</code> allows us to know the assembly labels that implements each logic case.</p>
 <p>Having parsed these information, we no longer need the <code>CallBr</code> payload, so we remove it from assembly, and make it branch to the slow path directly.</p>
 <p>Next, we perform a CFG analysis of the assembly. The only hard part about the CFG analysis is to know the possible destinations of the indirect branches. This ideally should be implemented as a LLVM backend pass, but I haven’t figured out how to do it due to limited documentation about LLVM backend. So currently, the indirect branch target analysis is done via some hacks that map the indirect branch back to LLVM IR by debug info.</p>
 <p>Now we have the CFG of the assembly, we can then figure out the ASM blocks only reachable from the function entry, and only reachable from each IC logic kind, as shown below.</p>
@@ -572,7 +572,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="clisj1kk8000ke9ovck6r1p4v" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="cm7gxnmne000lfeqk6mf0dzyv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -665,7 +665,7 @@
   <footer class="blog-footer">
   <div class="container">
     <div id="footer-info" class="inner">
-      &copy; 2023 Haoran Xu<br>
+      &copy; 2025 Haoran Xu<br>
       Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>

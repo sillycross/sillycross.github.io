@@ -130,8 +130,8 @@
 
     <div class="article-entry" itemprop="articleBody">
       
-        <p>Some day last week, I was writing code for <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">my research project</a> as usual.</p>
-<p>I made some innocent code changes, then the build failed, with a weird linker error <code>reloc has bad offset 8585654</code> inside some debug info section.</p>
+        <p>Some day last week, I was writing code for <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">my research project</a> as usual.<br>
+I made some innocent code changes, then the build failed, with a weird linker error <code>reloc has bad offset 8585654</code> inside some debug info section.</p>
 <p>I’ve never hit such an error before, and Google gives no useful results either. The error clearly looks like a toolchain bug. So I didn’t think too much, cleared <code>ccache</code>, and ran the build again. This time, the build finished without problem.</p>
 <p>Then a few days later, my code got a weird failure while running a benchmark. All the tests were passing (which also includes that benchmark on a smaller dataset), but on the real benchmark dataset the code failed.</p>
 <p>I rolled back a few git commits, but the failure persists. Finally, I rolled back to a known “good” commit where I have ran the benchmark with no problem in the past. And the benchmark is now failing.</p>
@@ -180,7 +180,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2023/06/11/2023-06-11/" data-id="clisj1kk0000fe9ov34kve9jz" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/06/11/2023-06-11/" data-id="cm7gxnmn7000jfeqk8fnc45i6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -507,7 +507,7 @@
 <p>However, as it turns out, with some clever tricks and cooperation from LLVM IR, doing only ASM block rearrangements is already sufficient to achieve a lot: we can support all the inline caching stuffs, among other things.</p>
 <p>The full trick is the following. Recall that we are only using <code>CallBr</code> as a device to express an opaque control flow, and the <code>InlineAsm</code> inside <code>CallBr</code> does not matter. So we will use this <code>InlineAsm</code> to carry down information to the textual assembly level, as shown below.</p>
 <p><img src="/images/2023-05-12/callbr-example.png" alt="The CallBr trick at LLVM IR level and the resulting assembly"></p>
-<p>As one can see, the previledged instruction <code>hlt</code> is used as a magic to allows us to identify the <code>CallBr</code> in the textual assembly. Then, the fake branches following the <code>hlt</code> allows us to know the assembly labels that implements each logic case.</p>
+<p>As one can see, the previledged instruction <code>hlt</code> is used as a magic to allow us to identify the <code>CallBr</code> in the textual assembly. Then, the fake branches following the <code>hlt</code> allows us to know the assembly labels that implements each logic case.</p>
 <p>Having parsed these information, we no longer need the <code>CallBr</code> payload, so we remove it from assembly, and make it branch to the slow path directly.</p>
 <p>Next, we perform a CFG analysis of the assembly. The only hard part about the CFG analysis is to know the possible destinations of the indirect branches. This ideally should be implemented as a LLVM backend pass, but I haven’t figured out how to do it due to limited documentation about LLVM backend. So currently, the indirect branch target analysis is done via some hacks that map the indirect branch back to LLVM IR by debug info.</p>
 <p>Now we have the CFG of the assembly, we can then figure out the ASM blocks only reachable from the function entry, and only reachable from each IC logic kind, as shown below.</p>
@@ -643,7 +643,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="clisj1kk8000ke9ovck6r1p4v" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/05/12/2023-05-12/" data-id="cm7gxnmne000lfeqk6mf0dzyv" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -806,7 +806,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="clisj1kjz000ee9ov841cdkct" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/11/22/2022-11-22/" data-id="cm7gxnmn6000hfeqk62vk1wlm" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -895,7 +895,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="clisj1kjy000de9ovbr168f26" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/10/02/2022-10-02/" data-id="cm7gxnmn7000ifeqk8cvuag05" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1014,7 +1014,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="clisj1kjw000ce9ov0qh41pol" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/07/18/2022-07-18/" data-id="cm7gxnmn5000gfeqkcluh6om4" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1141,7 +1141,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="clisj1kjv000be9ov2mx48l1o" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/11/2022-06-11/" data-id="cm7gxnmn4000ffeqkgzcp8es8" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1839,7 +1839,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="clisj1kk8000je9ovgsin2izm" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/06/02/2022-06-02/" data-id="cm7gxnmne000kfeqk1wfu1aed" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -1919,7 +1919,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="clisj1kju000ae9ovail5g0hv" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/05/31/2022-05-31/" data-id="cm7gxnmn3000efeqkgz9jg5s6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -2044,7 +2044,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="clisj1kk2000ie9ov12r03fb3" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/30/2022-04-30/" data-id="cm7gxnmn2000dfeqk0vxz1zdm" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -2156,7 +2156,7 @@ Do some check to t2 and push it to queue<br>
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="clisj1kjt0009e9ov7kbkh1wp" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2022/04/26/2022-04-26/" data-id="cm7gxnmn1000cfeqk9yohgydw" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -2235,7 +2235,7 @@ Do some check to t2 and push it to queue<br>
   <footer class="blog-footer">
   <div class="container">
     <div id="footer-info" class="inner">
-      &copy; 2023 Haoran Xu<br>
+      &copy; 2025 Haoran Xu<br>
       Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>

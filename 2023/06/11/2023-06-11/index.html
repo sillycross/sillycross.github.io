@@ -14,7 +14,7 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://sillycross.github.io/images/2023-06-11/faulty_ram_chip.jpeg">
 <meta property="article:published_time" content="2023-06-11T00:00:00.000Z">
-<meta property="article:modified_time" content="2023-06-12T07:21:31.262Z">
+<meta property="article:modified_time" content="2025-02-23T01:09:58.051Z">
 <meta property="article:author" content="Haoran Xu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://sillycross.github.io/images/2023-06-11/faulty_ram_chip.jpeg">
@@ -134,8 +134,8 @@
 
     <div class="article-entry" itemprop="articleBody">
       
-        <p>Some day last week, I was writing code for <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">my research project</a> as usual.</p>
-<p>I made some innocent code changes, then the build failed, with a weird linker error <code>reloc has bad offset 8585654</code> inside some debug info section.</p>
+        <p>Some day last week, I was writing code for <a href="https://github.com/luajit-remake/luajit-remake" target="_blank" rel="noopener">my research project</a> as usual.<br>
+I made some innocent code changes, then the build failed, with a weird linker error <code>reloc has bad offset 8585654</code> inside some debug info section.</p>
 <p>I’ve never hit such an error before, and Google gives no useful results either. The error clearly looks like a toolchain bug. So I didn’t think too much, cleared <code>ccache</code>, and ran the build again. This time, the build finished without problem.</p>
 <p>Then a few days later, my code got a weird failure while running a benchmark. All the tests were passing (which also includes that benchmark on a smaller dataset), but on the real benchmark dataset the code failed.</p>
 <p>I rolled back a few git commits, but the failure persists. Finally, I rolled back to a known “good” commit where I have ran the benchmark with no problem in the past. And the benchmark is now failing.</p>
@@ -184,7 +184,7 @@
 
     <footer class="article-footer">
     <!--
-      <a data-url="https://sillycross.github.io/2023/06/11/2023-06-11/" data-id="clisj1kk0000fe9ov34kve9jz" class="article-share-link">
+      <a data-url="https://sillycross.github.io/2023/06/11/2023-06-11/" data-id="cm7gxnmn7000jfeqk8fnc45i6" class="article-share-link">
         <i class="fa fa-share"></i> Share
       </a>
     -->
@@ -270,7 +270,7 @@
   <footer class="blog-footer">
   <div class="container">
     <div id="footer-info" class="inner">
-      &copy; 2023 Haoran Xu<br>
+      &copy; 2025 Haoran Xu<br>
       Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>
